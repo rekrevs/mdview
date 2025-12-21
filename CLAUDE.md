@@ -5,14 +5,13 @@
 ## Quick Start
 
 ```bash
-# Build
+# Build and install
+make install
+
+# Or manually
 swift build
-
-# Run directly
-.build/debug/mdview
-
-# Or build and run the app bundle
-swift build && ./scripts/bundle.sh && open mdview.app
+./bundle.sh
+cp -r mdview.app ~/Applications/
 ```
 
 ## Tech Stack
@@ -53,21 +52,23 @@ swift package clean
 swift package update
 ```
 
-## Creating App Bundle
-
-After building, create the .app bundle:
+## Build & Install
 
 ```bash
-# Create bundle structure
-mkdir -p mdview.app/Contents/MacOS
-mkdir -p mdview.app/Contents/Resources
+# Full build, bundle, and install to ~/Applications
+make install
 
-# Copy binary
-cp .build/debug/mdview mdview.app/Contents/MacOS/
+# Just build
+make build
 
-# Sign (ad-hoc for local use)
-codesign --sign - --force --deep mdview.app
+# Just create app bundle (after build)
+make bundle
+
+# Clean everything
+make clean
 ```
+
+The `bundle.sh` script handles creating the .app structure and code signing.
 
 ## Verification
 
