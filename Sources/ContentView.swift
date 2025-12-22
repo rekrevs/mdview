@@ -3,15 +3,178 @@ import MarkdownUI
 
 struct ContentView: View {
     let document: MarkdownDocument
+    @State private var scrollProxy: ScrollViewProxy?
 
     var body: some View {
-        ScrollView {
-            Markdown(document.text)
-                .padding()
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        KeyboardScrollView {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Markdown(document.text)
+                        .padding()
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .id("content")
+                }
+                .onAppear {
+                    scrollProxy = proxy
+                }
+            }
         }
         .frame(minWidth: 500, minHeight: 400)
         .background(Color(NSColor.textBackgroundColor))
+    }
+}
+
+// MARK: - Keyboard handling wrapper
+
+struct KeyboardScrollView<Content: View>: NSViewRepresentable {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    func makeNSView(context: Context) -> KeyboardCaptureView {
+        let view = KeyboardCaptureView()
+        let hostingView = NSHostingView(rootView: content)
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(hostingView)
+
+        NSLayoutConstraint.activate([
+            hostingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hostingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hostingView.topAnchor.constraint(equalTo: view.topAnchor),
+            hostingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+
+        context.coordinator.hostingView = hostingView
+        return view
+    }
+
+    func updateNSView(_ nsView: KeyboardCaptureView, context: Context) {
+        context.coordinator.hostingView?.rootView = content
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    class Coordinator {
+        var hostingView: NSHostingView<Content>?
+    }
+}
+
+class KeyboardCaptureView: NSView {
+    override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        DispatchQueue.main.async {
+            self.window?.makeFirstResponder(self)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        window?.makeFirstResponder(self)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard let scrollView = findScrollView() else {
+            super.keyDown(with: event)
+            return
+        }
+
+        let clipView = scrollView.contentView
+        guard let documentView = scrollView.documentView else {
+            super.keyDown(with: event)
+            return
+        }
+
+        let lineHeight: CGFloat = 40
+        let pageHeight = scrollView.bounds.height - lineHeight
+
+        let currentY = clipView.bounds.origin.y
+        let maxY = max(0, documentView.bounds.height - clipView.bounds.height)
+
+        var newY = currentY
+
+        switch event.keyCode {
+        case 126: // Up arrow
+            if event.modifierFlags.contains(.command) {
+                newY = 0
+            } else if event.modifierFlags.contains(.option) {
+                newY = max(0, currentY - pageHeight)
+            } else {
+                newY = max(0, currentY - lineHeight)
+            }
+
+        case 125: // Down arrow
+            if event.modifierFlags.contains(.command) {
+                newY = maxY
+            } else if event.modifierFlags.contains(.option) {
+                newY = min(maxY, currentY + pageHeight)
+            } else {
+                newY = min(maxY, currentY + lineHeight)
+            }
+
+        case 49: // Space bar
+            if event.modifierFlags.contains(.shift) {
+                newY = max(0, currentY - pageHeight)
+            } else {
+                newY = min(maxY, currentY + pageHeight)
+            }
+
+        case 115: // Home
+            newY = 0
+
+        case 119: // End
+            newY = maxY
+
+        case 116: // Page Up
+            newY = max(0, currentY - pageHeight)
+
+        case 121: // Page Down
+            newY = min(maxY, currentY + pageHeight)
+
+        default:
+            super.keyDown(with: event)
+            return
+        }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            clipView.animator().setBoundsOrigin(NSPoint(x: 0, y: newY))
+        }
+    }
+
+    private func findScrollView() -> NSScrollView? {
+        var view: NSView? = self
+        while let v = view {
+            for subview in v.subviews {
+                if let scrollView = findScrollViewIn(subview) {
+                    return scrollView
+                }
+            }
+            view = v.superview
+        }
+        return nil
+    }
+
+    private func findScrollViewIn(_ view: NSView) -> NSScrollView? {
+        if let scrollView = view as? NSScrollView {
+            return scrollView
+        }
+        for subview in view.subviews {
+            if let scrollView = findScrollViewIn(subview) {
+                return scrollView
+            }
+        }
+        return nil
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        return true
     }
 }
