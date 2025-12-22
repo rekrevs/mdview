@@ -13,6 +13,11 @@ mkdir -p "$APP_DIR/Contents/Resources"
 # Copy binary
 cp "$BUILD_DIR/mdview" "$APP_DIR/Contents/MacOS/"
 
+# Copy icon
+if [ -f "$SCRIPT_DIR/AppIcon.icns" ]; then
+    cp "$SCRIPT_DIR/AppIcon.icns" "$APP_DIR/Contents/Resources/"
+fi
+
 # Create Info.plist
 cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -39,6 +44,8 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
