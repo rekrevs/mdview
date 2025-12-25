@@ -169,6 +169,23 @@ struct ContentView: View {
                             .frame(width: 4)
                     }
             }
+            .table { configuration in
+                configuration.label
+                    .fixedSize(horizontal: false, vertical: true)
+                    .markdownTableBorderStyle(.init(color: .secondary.opacity(0.3)))
+                    .markdownMargin(top: .em(0.5), bottom: .em(0.5))
+            }
+            .tableCell { configuration in
+                configuration.label
+                    .markdownTextStyle {
+                        if configuration.row == 0 {
+                            FontWeight(.semibold)
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 13)
+            }
     }
 }
 
