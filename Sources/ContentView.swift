@@ -11,11 +11,7 @@ struct ContentView: View {
     private let zoomStep: CGFloat = 1.1
 
     var body: some View {
-        KeyboardScrollView(
-            onZoomIn: { zoomIn() },
-            onZoomOut: { zoomOut() },
-            onZoomReset: { zoomReset() }
-        ) {
+        KeyboardScrollView {
             ScrollViewReader { proxy in
                 ScrollView {
                     Markdown(document.text)
@@ -32,6 +28,15 @@ struct ContentView: View {
         }
         .frame(minWidth: 500, minHeight: 400)
         .background(Color(NSColor.textBackgroundColor))
+        .onReceive(NotificationCenter.default.publisher(for: .zoomIn)) { _ in
+            zoomIn()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .zoomOut)) { _ in
+            zoomOut()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .zoomReset)) { _ in
+            zoomReset()
+        }
     }
 
     private func zoomIn() {
@@ -47,7 +52,7 @@ struct ContentView: View {
     }
 
     private var scaledTheme: Theme {
-        let baseFontSize: CGFloat = 16 * zoomLevel
+        let baseFontSize: CGFloat = 14 * zoomLevel
         return Theme()
             .text {
                 FontSize(baseFontSize)
@@ -135,28 +140,13 @@ struct ContentView: View {
 
 struct KeyboardScrollView<Content: View>: NSViewRepresentable {
     let content: Content
-    let onZoomIn: () -> Void
-    let onZoomOut: () -> Void
-    let onZoomReset: () -> Void
 
-    init(
-        onZoomIn: @escaping () -> Void,
-        onZoomOut: @escaping () -> Void,
-        onZoomReset: @escaping () -> Void,
-        @ViewBuilder content: () -> Content
-    ) {
+    init(@ViewBuilder content: () -> Content) {
         self.content = content()
-        self.onZoomIn = onZoomIn
-        self.onZoomOut = onZoomOut
-        self.onZoomReset = onZoomReset
     }
 
     func makeNSView(context: Context) -> KeyboardCaptureView {
         let view = KeyboardCaptureView()
-        view.onZoomIn = onZoomIn
-        view.onZoomOut = onZoomOut
-        view.onZoomReset = onZoomReset
-
         let hostingView = NSHostingView(rootView: content)
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hostingView)
@@ -174,9 +164,6 @@ struct KeyboardScrollView<Content: View>: NSViewRepresentable {
 
     func updateNSView(_ nsView: KeyboardCaptureView, context: Context) {
         context.coordinator.hostingView?.rootView = content
-        nsView.onZoomIn = onZoomIn
-        nsView.onZoomOut = onZoomOut
-        nsView.onZoomReset = onZoomReset
     }
 
     func makeCoordinator() -> Coordinator {
@@ -189,10 +176,6 @@ struct KeyboardScrollView<Content: View>: NSViewRepresentable {
 }
 
 class KeyboardCaptureView: NSView {
-    var onZoomIn: (() -> Void)?
-    var onZoomOut: (() -> Void)?
-    var onZoomReset: (() -> Void)?
-
     override var acceptsFirstResponder: Bool { true }
 
     override func viewDidMoveToWindow() {
@@ -208,24 +191,6 @@ class KeyboardCaptureView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        // Handle zoom shortcuts (Cmd+=, Cmd+-, Cmd+0)
-        if event.modifierFlags.contains(.command) {
-            switch event.charactersIgnoringModifiers {
-            case "=", "+":
-                onZoomIn?()
-                return
-            case "-":
-                onZoomOut?()
-                return
-            case "0":
-                onZoomReset?()
-                return
-            default:
-                break
-            }
-        }
-
-        // Handle scroll shortcuts
         guard let scrollView = findScrollView() else {
             super.keyDown(with: event)
             return
