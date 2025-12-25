@@ -87,3 +87,31 @@ Use `/wotan` to manage tasks:
 - `/wotan` - list active tasks
 - `/wotan continue` - pick up next task
 - `/wotan add "description"` - add new task
+
+## Implementation Notes
+
+### MarkdownUI Library
+
+- **No HTML rendering**: MarkdownUI does NOT render raw HTML tags - intentional limitation
+- **GFM support**: Does support GitHub Flavored Markdown (tables, task lists, strikethrough)
+- **Images**: `DefaultImageProvider` only handles http/https URLs
+  - Use `LocalFileImageProvider` (in ContentView.swift) for local file:// images
+  - Pass `imageBaseURL: fileURL?.deletingLastPathComponent()` to resolve relative paths
+
+### macOS Keyboard Shortcuts
+
+- **Character shortcuts** (+, -, 0, etc.): Use SwiftUI `CommandGroup` with `.keyboardShortcut()`
+  - Handles keyboard localization automatically (Swedish, German, etc.)
+  - DON'T use NSView `keyDown` with `charactersIgnoringModifiers` - fails on non-US keyboards
+- **Physical keys** (arrows, space, home, end): CAN use `keyCode` - hardware-based, same on all keyboards
+
+### Build/Test Workflow
+
+- macOS may launch old version from `~/Applications` instead of newly built version
+- Always run: `cp -R mdview.app ~/Applications/` after `./bundle.sh` to test correct version
+- Or use `make install` which does this automatically
+
+### File Watching
+
+- `DispatchSource.makeFileSystemObjectSource` (kqueue) - efficient kernel-based file monitoring
+- Store markdown text as `@State` separate from `FileDocument` for live updates on external changes
