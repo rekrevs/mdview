@@ -21,7 +21,8 @@ struct ContentView: View {
         KeyboardScrollView {
             ScrollViewReader { proxy in
                 ScrollView {
-                    Markdown(markdownText)
+                    Markdown(markdownText, imageBaseURL: fileURL?.deletingLastPathComponent())
+                        .markdownImageProvider(LocalFileImageProvider())
                         .markdownTheme(scaledTheme)
                         .padding()
                         .textSelection(.enabled)
@@ -168,6 +169,19 @@ struct ContentView: View {
                             .frame(width: 4)
                     }
             }
+    }
+}
+
+// MARK: - Local File Image Provider
+
+struct LocalFileImageProvider: ImageProvider {
+    func makeImage(url: URL?) -> some View {
+        if let url = url, url.isFileURL, let nsImage = NSImage(contentsOf: url) {
+            Image(nsImage: nsImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: nsImage.size.width, maxHeight: nsImage.size.height)
+        }
     }
 }
 

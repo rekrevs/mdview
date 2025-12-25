@@ -1,12 +1,8 @@
 # mdview
 
-<p align="center">
-  <img src="AppIcon.iconset/icon_256x256.png" alt="mdview icon" width="128" height="128">
-</p>
+![mdview icon](AppIcon.iconset/icon_128x128.png)
 
-<p align="center">
-  <strong>Native macOS markdown viewer</strong>
-</p>
+> Native macOS markdown viewer
 
 A lightweight markdown viewer for macOS built with SwiftUI and [MarkdownUI](https://github.com/gonzalezreal/swift-markdown-ui).
 
