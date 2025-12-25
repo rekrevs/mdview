@@ -5,7 +5,7 @@ import AppKit
 struct mdviewApp: App {
     var body: some Scene {
         DocumentGroup(viewing: MarkdownDocument.self) { file in
-            ContentView(document: file.document)
+            ContentView(document: file.document, fileURL: file.fileURL)
         }
         .defaultSize(width: defaultWindowWidth, height: defaultWindowHeight)
         .commands {

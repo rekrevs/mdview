@@ -2,19 +2,26 @@ import SwiftUI
 import MarkdownUI
 
 struct ContentView: View {
-    let document: MarkdownDocument
+    let fileURL: URL?
+    @State private var markdownText: String
     @State private var scrollProxy: ScrollViewProxy?
     @State private var zoomLevel: CGFloat = 1.0
+    @State private var fileWatcher: FileWatcher?
 
     private let minZoom: CGFloat = 0.5
     private let maxZoom: CGFloat = 3.0
     private let zoomStep: CGFloat = 1.1
 
+    init(document: MarkdownDocument, fileURL: URL?) {
+        self.fileURL = fileURL
+        self._markdownText = State(initialValue: document.text)
+    }
+
     var body: some View {
         KeyboardScrollView {
             ScrollViewReader { proxy in
                 ScrollView {
-                    Markdown(document.text)
+                    Markdown(markdownText)
                         .markdownTheme(scaledTheme)
                         .padding()
                         .textSelection(.enabled)
@@ -28,6 +35,12 @@ struct ContentView: View {
         }
         .frame(minWidth: 500, minHeight: 400)
         .background(Color(NSColor.textBackgroundColor))
+        .onAppear {
+            startWatching()
+        }
+        .onDisappear {
+            stopWatching()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .zoomIn)) { _ in
             zoomIn()
         }
@@ -36,6 +49,28 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .zoomReset)) { _ in
             zoomReset()
+        }
+    }
+
+    private func startWatching() {
+        guard let url = fileURL else { return }
+        fileWatcher = FileWatcher(url: url) { [self] in
+            reloadFile()
+        }
+    }
+
+    private func stopWatching() {
+        fileWatcher = nil
+    }
+
+    private func reloadFile() {
+        guard let url = fileURL,
+              let data = try? Data(contentsOf: url),
+              let text = String(data: data, encoding: .utf8)
+        else { return }
+
+        if text != markdownText {
+            markdownText = text
         }
     }
 
@@ -133,6 +168,44 @@ struct ContentView: View {
                             .frame(width: 4)
                     }
             }
+    }
+}
+
+// MARK: - File Watcher
+
+class FileWatcher {
+    private var source: DispatchSourceFileSystemObject?
+    private let fileDescriptor: Int32
+    private let onChange: () -> Void
+
+    init?(url: URL, onChange: @escaping () -> Void) {
+        self.onChange = onChange
+        self.fileDescriptor = open(url.path, O_EVTONLY)
+
+        guard fileDescriptor >= 0 else { return nil }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: [.write, .rename, .delete, .extend],
+            queue: .main
+        )
+
+        source.setEventHandler { [weak self] in
+            self?.onChange()
+        }
+
+        source.setCancelHandler { [weak self] in
+            if let fd = self?.fileDescriptor, fd >= 0 {
+                close(fd)
+            }
+        }
+
+        source.resume()
+        self.source = source
+    }
+
+    deinit {
+        source?.cancel()
     }
 }
 
