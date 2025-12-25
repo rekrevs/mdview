@@ -4,12 +4,22 @@ import MarkdownUI
 struct ContentView: View {
     let document: MarkdownDocument
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var zoomLevel: CGFloat = 1.0
+
+    private let minZoom: CGFloat = 0.5
+    private let maxZoom: CGFloat = 3.0
+    private let zoomStep: CGFloat = 1.1
 
     var body: some View {
-        KeyboardScrollView {
+        KeyboardScrollView(
+            onZoomIn: { zoomIn() },
+            onZoomOut: { zoomOut() },
+            onZoomReset: { zoomReset() }
+        ) {
             ScrollViewReader { proxy in
                 ScrollView {
                     Markdown(document.text)
+                        .markdownTheme(scaledTheme)
                         .padding()
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -23,19 +33,130 @@ struct ContentView: View {
         .frame(minWidth: 500, minHeight: 400)
         .background(Color(NSColor.textBackgroundColor))
     }
+
+    private func zoomIn() {
+        zoomLevel = min(maxZoom, zoomLevel * zoomStep)
+    }
+
+    private func zoomOut() {
+        zoomLevel = max(minZoom, zoomLevel / zoomStep)
+    }
+
+    private func zoomReset() {
+        zoomLevel = 1.0
+    }
+
+    private var scaledTheme: Theme {
+        let baseFontSize: CGFloat = 16 * zoomLevel
+        return Theme()
+            .text {
+                FontSize(baseFontSize)
+            }
+            .code {
+                FontFamilyVariant(.monospaced)
+                FontSize(.em(0.85))
+            }
+            .heading1 { configuration in
+                configuration.label
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(2))
+                    }
+                    .markdownMargin(top: .em(1.5), bottom: .em(0.5))
+            }
+            .heading2 { configuration in
+                configuration.label
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(1.5))
+                    }
+                    .markdownMargin(top: .em(1.3), bottom: .em(0.4))
+            }
+            .heading3 { configuration in
+                configuration.label
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(1.25))
+                    }
+                    .markdownMargin(top: .em(1.1), bottom: .em(0.3))
+            }
+            .heading4 { configuration in
+                configuration.label
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(1.1))
+                    }
+                    .markdownMargin(top: .em(1), bottom: .em(0.2))
+            }
+            .heading5 { configuration in
+                configuration.label
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(1))
+                    }
+                    .markdownMargin(top: .em(0.9), bottom: .em(0.2))
+            }
+            .heading6 { configuration in
+                configuration.label
+                    .markdownTextStyle {
+                        FontWeight(.semibold)
+                        FontSize(.em(0.9))
+                    }
+                    .markdownMargin(top: .em(0.8), bottom: .em(0.2))
+            }
+            .codeBlock { configuration in
+                configuration.label
+                    .markdownTextStyle {
+                        FontFamilyVariant(.monospaced)
+                        FontSize(.em(0.85))
+                    }
+                    .padding()
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .markdownMargin(top: .em(0.5), bottom: .em(0.5))
+            }
+            .blockquote { configuration in
+                configuration.label
+                    .markdownTextStyle {
+                        FontStyle(.italic)
+                        ForegroundColor(.secondary)
+                    }
+                    .padding(.leading, 16)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.5))
+                            .frame(width: 4)
+                    }
+            }
+    }
 }
 
 // MARK: - Keyboard handling wrapper
 
 struct KeyboardScrollView<Content: View>: NSViewRepresentable {
     let content: Content
+    let onZoomIn: () -> Void
+    let onZoomOut: () -> Void
+    let onZoomReset: () -> Void
 
-    init(@ViewBuilder content: () -> Content) {
+    init(
+        onZoomIn: @escaping () -> Void,
+        onZoomOut: @escaping () -> Void,
+        onZoomReset: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
         self.content = content()
+        self.onZoomIn = onZoomIn
+        self.onZoomOut = onZoomOut
+        self.onZoomReset = onZoomReset
     }
 
     func makeNSView(context: Context) -> KeyboardCaptureView {
         let view = KeyboardCaptureView()
+        view.onZoomIn = onZoomIn
+        view.onZoomOut = onZoomOut
+        view.onZoomReset = onZoomReset
+
         let hostingView = NSHostingView(rootView: content)
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hostingView)
@@ -53,6 +174,9 @@ struct KeyboardScrollView<Content: View>: NSViewRepresentable {
 
     func updateNSView(_ nsView: KeyboardCaptureView, context: Context) {
         context.coordinator.hostingView?.rootView = content
+        nsView.onZoomIn = onZoomIn
+        nsView.onZoomOut = onZoomOut
+        nsView.onZoomReset = onZoomReset
     }
 
     func makeCoordinator() -> Coordinator {
@@ -65,6 +189,10 @@ struct KeyboardScrollView<Content: View>: NSViewRepresentable {
 }
 
 class KeyboardCaptureView: NSView {
+    var onZoomIn: (() -> Void)?
+    var onZoomOut: (() -> Void)?
+    var onZoomReset: (() -> Void)?
+
     override var acceptsFirstResponder: Bool { true }
 
     override func viewDidMoveToWindow() {
@@ -80,6 +208,24 @@ class KeyboardCaptureView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
+        // Handle zoom shortcuts (Cmd+=, Cmd+-, Cmd+0)
+        if event.modifierFlags.contains(.command) {
+            switch event.charactersIgnoringModifiers {
+            case "=", "+":
+                onZoomIn?()
+                return
+            case "-":
+                onZoomOut?()
+                return
+            case "0":
+                onZoomReset?()
+                return
+            default:
+                break
+            }
+        }
+
+        // Handle scroll shortcuts
         guard let scrollView = findScrollView() else {
             super.keyDown(with: event)
             return
