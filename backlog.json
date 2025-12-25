@@ -1,10 +1,13 @@
 {
   "version": "2.0.0",
-  "next_id": 5,
+  "next_id": 8,
   "tasks": [
     {"id": "T-0001", "status": "DONE", "summary": "Create SwiftUI app with MarkdownUI integration"},
     {"id": "T-0002", "status": "DONE", "summary": "Fix: double-clicked file opens in existing window showing old content"},
     {"id": "T-0003", "status": "DONE", "summary": "Set default window height to 80% of display"},
-    {"id": "T-0004", "status": "DONE", "summary": "Add keyboard scrolling (arrows, space, option, command)"}
+    {"id": "T-0004", "status": "DONE", "summary": "Add keyboard scrolling (arrows, space, option, command)"},
+    {"id": "T-0005", "status": "DONE", "summary": "Add zoom in/out with Cmd+/Cmd- keyboard shortcuts"},
+    {"id": "T-0006", "status": "DONE", "summary": "Auto-reload document when file changes on disk"},
+    {"id": "T-0007", "status": "BLOCKED", "summary": "Add find in document with Cmd+F", "blocker": "Requires switching from MarkdownUI to NSTextView rendering"}
   ]
 }
