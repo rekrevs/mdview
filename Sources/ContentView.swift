@@ -1,5 +1,6 @@
 import SwiftUI
 import MarkdownUI
+import AppKit
 
 struct ContentView: View {
     let fileURL: URL?
@@ -12,6 +13,10 @@ struct ContentView: View {
     private let maxZoom: CGFloat = 3.0
     private let zoomStep: CGFloat = 1.1
 
+    private var baseURL: URL? {
+        fileURL?.deletingLastPathComponent()
+    }
+
     init(document: MarkdownDocument, fileURL: URL?) {
         self.fileURL = fileURL
         self._markdownText = State(initialValue: document.text)
@@ -21,7 +26,7 @@ struct ContentView: View {
         KeyboardScrollView {
             ScrollViewReader { proxy in
                 ScrollView {
-                    Markdown(markdownText, imageBaseURL: fileURL?.deletingLastPathComponent())
+                    Markdown(markdownText, baseURL: baseURL, imageBaseURL: baseURL)
                         .markdownImageProvider(LocalFileImageProvider())
                         .markdownTheme(scaledTheme)
                         .padding()
@@ -34,6 +39,9 @@ struct ContentView: View {
                 }
             }
         }
+        .environment(\.openURL, OpenURLAction { url in
+            handleURL(url)
+        })
         .frame(minWidth: 500, minHeight: 400)
         .background(Color(NSColor.textBackgroundColor))
         .onAppear {
@@ -85,6 +93,21 @@ struct ContentView: View {
 
     private func zoomReset() {
         zoomLevel = 1.0
+    }
+
+    private func handleURL(_ url: URL) -> OpenURLAction.Result {
+        // For markdown files, open in mdview
+        if url.isFileURL && url.pathExtension.lowercased() == "md" {
+            NSWorkspace.shared.open(
+                [url],
+                withApplicationAt: Bundle.main.bundleURL,
+                configuration: NSWorkspace.OpenConfiguration()
+            )
+            return .handled
+        }
+
+        // For other URLs (http, https, etc.), use system default
+        return .systemAction
     }
 
     private var scaledTheme: Theme {
