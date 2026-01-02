@@ -188,10 +188,10 @@ struct HeadingBlockView: View {
 
     private var topPadding: CGFloat {
         switch heading.level {
-        case 1: return fontSize * 1.5
-        case 2: return fontSize * 1.3
-        case 3: return fontSize * 1.1
-        default: return fontSize * 0.8
+        case 1: return fontSize * 0.8
+        case 2: return fontSize * 0.7
+        case 3: return fontSize * 0.5
+        default: return fontSize * 0.4
         }
     }
 
@@ -199,7 +199,7 @@ struct HeadingBlockView: View {
         renderInlineContent(Array(heading.children), fontSize: scaledSize, baseURL: nil)
             .fontWeight(.semibold)
             .padding(.top, topPadding)
-            .padding(.bottom, fontSize * 0.3)
+            .padding(.bottom, fontSize * 0.2)
     }
 }
 
