@@ -7,13 +7,15 @@ let package = Package(
         .macOS(.v13)
     ],
     dependencies: [
-        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.0.0")
+        .package(url: "https://github.com/swiftlang/swift-markdown", from: "0.5.0"),
+        .package(url: "https://github.com/mgriebling/SwiftMath", from: "1.7.0")
     ],
     targets: [
         .executableTarget(
             name: "mdview",
             dependencies: [
-                .product(name: "MarkdownUI", package: "swift-markdown-ui")
+                .product(name: "Markdown", package: "swift-markdown"),
+                .product(name: "SwiftMath", package: "SwiftMath")
             ],
             path: "Sources"
         )

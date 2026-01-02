@@ -1,6 +1,6 @@
 # mdview
 
-> Native macOS markdown viewer using SwiftUI and MarkdownUI
+> Native macOS markdown viewer with LaTeX math support
 
 ## Quick Start
 
@@ -18,7 +18,8 @@ cp -r mdview.app ~/Applications/
 
 - **Language**: Swift 5.9+
 - **UI Framework**: SwiftUI
-- **Markdown**: [MarkdownUI](https://github.com/gonzalezreal/swift-markdown-ui) (cmark-gfm based)
+- **Markdown**: [swift-markdown](https://github.com/swiftlang/swift-markdown) (Apple's cmark-gfm based parser)
+- **Math**: [SwiftMath](https://github.com/mgriebling/SwiftMath) (LaTeX rendering)
 - **Target**: macOS 13.0+
 - **Build**: Swift Package Manager (no Xcode required)
 
@@ -82,13 +83,18 @@ swiftlint
 
 ## Implementation Notes
 
-### MarkdownUI Library
+### Custom Markdown Renderer
 
-- **No HTML rendering**: MarkdownUI does NOT render raw HTML tags - intentional limitation
-- **GFM support**: Does support GitHub Flavored Markdown (tables, task lists, strikethrough)
-- **Images**: `DefaultImageProvider` only handles http/https URLs
-  - Use `LocalFileImageProvider` (in ContentView.swift) for local file:// images
-  - Pass `imageBaseURL: fileURL?.deletingLastPathComponent()` to resolve relative paths
+Uses swift-markdown for AST parsing and custom SwiftUI view composition for rendering:
+
+- **Math Support**: Inline `$...$` and block `$$...$$` LaTeX via SwiftMath
+- **GFM support**: Tables, strikethrough, task lists
+- **No HTML rendering**: Raw HTML tags are ignored (by design)
+- **Code blocks**: Math delimiters in code blocks are NOT rendered (AST-aware)
+
+Key files:
+- `ContentView.swift` - Main renderer with `MarkdownContentView`, `MathAwareParagraph`
+- `MathView.swift` - NSViewRepresentable wrapper for MTMathUILabel
 
 ### macOS Keyboard Shortcuts
 
