@@ -327,10 +327,8 @@ struct MathAwareParagraph: View {
             text
         case .inlineMath(let latex):
             MathView(latex: latex, fontSize: fontSize, displayStyle: false)
-                .fixedSize()
         case .blockMath(let latex):
             MathView(latex: latex, fontSize: fontSize * 1.2, displayStyle: true)
-                .fixedSize()
         }
     }
 }
@@ -564,7 +562,7 @@ struct TableCellContentView: View {
     }
 }
 
-// MARK: - Wrapping HStack (simple flow layout)
+// MARK: - Wrapping HStack with vertical center alignment
 
 struct WrappingHStack: Layout {
     var alignment: HorizontalAlignment = .leading
@@ -585,28 +583,57 @@ struct WrappingHStack: Layout {
 
     private func layout(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, positions: [CGPoint]) {
         let maxWidth = proposal.width ?? .infinity
-        var positions: [CGPoint] = []
+
+        // First pass: group subviews into rows
+        var rows: [[LayoutSubviews.Element]] = []
+        var currentRow: [LayoutSubviews.Element] = []
         var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var lineHeight: CGFloat = 0
-        var totalHeight: CGFloat = 0
-        var totalWidth: CGFloat = 0
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
 
             if currentX + size.width > maxWidth && currentX > 0 {
+                rows.append(currentRow)
+                currentRow = []
                 currentX = 0
-                currentY += lineHeight + spacing
-                lineHeight = 0
             }
 
-            positions.append(CGPoint(x: currentX, y: currentY))
+            currentRow.append(subview)
             currentX += size.width
-            lineHeight = max(lineHeight, size.height)
-            totalWidth = max(totalWidth, currentX)
-            totalHeight = currentY + lineHeight
         }
+        if !currentRow.isEmpty {
+            rows.append(currentRow)
+        }
+
+        // Second pass: calculate positions with vertical center alignment
+        var positions: [CGPoint] = []
+        var currentY: CGFloat = 0
+        var totalWidth: CGFloat = 0
+
+        for row in rows {
+            // Find the maximum height in this row
+            var rowHeight: CGFloat = 0
+            for subview in row {
+                let dims = subview.dimensions(in: .unspecified)
+                rowHeight = max(rowHeight, dims.height)
+            }
+
+            // Place each subview vertically centered within the row
+            var x: CGFloat = 0
+            for subview in row {
+                let dims = subview.dimensions(in: .unspecified)
+                // Center this view vertically within the row
+                let yOffset = (rowHeight - dims.height) / 2
+
+                positions.append(CGPoint(x: x, y: currentY + yOffset))
+                x += dims.width
+                totalWidth = max(totalWidth, x)
+            }
+
+            currentY += rowHeight + spacing
+        }
+
+        let totalHeight = max(0, currentY - spacing) // Remove trailing spacing
 
         return (CGSize(width: totalWidth, height: totalHeight), positions)
     }

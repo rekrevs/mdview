@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "next_id": 13,
+  "next_id": 14,
   "tasks": [
     {"id": "T-0001", "status": "DONE", "summary": "Create SwiftUI app with MarkdownUI integration"},
     {"id": "T-0002", "status": "DONE", "summary": "Fix: double-clicked file opens in existing window showing old content"},
@@ -13,6 +13,7 @@
     {"id": "T-0009", "status": "DONE", "summary": "Add LaTeX math formula rendering support"},
     {"id": "T-0010", "status": "BLOCKED", "summary": "Prototype MarkdownView to validate as MarkdownUI replacement", "blocker": "#Preview macro requires Xcode (not available)"},
     {"id": "T-0011", "status": "DONE", "summary": "Analyze feasibility of building custom markdown+math renderer from scratch"},
-    {"id": "T-0012", "status": "DONE", "summary": "Build custom markdown renderer with swift-markdown + SwiftMath"}
+    {"id": "T-0012", "status": "DONE", "summary": "Build custom markdown renderer with swift-markdown + SwiftMath"},
+    {"id": "T-0013", "status": "ONGOING", "summary": "Analyze and fix spacing around inline math", "phase": "PLANNING"}
   ]
 }
