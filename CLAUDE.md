@@ -32,8 +32,7 @@ mdview/
 │   └── ContentView.swift # Main view with markdown rendering
 ├── mdview.app/           # Built app bundle
 ├── CLAUDE.md             # This file
-├── backlog.json          # Task index
-└── dev-log/              # Task details
+└── wotan/                # Task management
 ```
 
 ## Development
@@ -80,13 +79,6 @@ swift build
 # SwiftLint (if installed)
 swiftlint
 ```
-
-## Task Management
-
-Use `/wotan` to manage tasks:
-- `/wotan` - list active tasks
-- `/wotan continue` - pick up next task
-- `/wotan add "description"` - add new task
 
 ## Implementation Notes
 
