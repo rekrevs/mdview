@@ -213,13 +213,24 @@ struct MathAwareParagraph: View {
     var body: some View {
         let segments = parseSegments()
 
+        // Check if we have any math content
+        let hasMath = segments.contains { segment in
+            if case .inlineMath = segment { return true }
+            if case .blockMath = segment { return true }
+            return false
+        }
+
         if segments.count == 1, case .blockMath(let latex) = segments[0] {
             // Single block math - center it
             MathView(latex: latex, fontSize: fontSize * 1.2, displayStyle: true)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 8)
+        } else if !hasMath {
+            // No math - use Text concatenation which flows naturally
+            renderInlineContent(Array(paragraph.children), fontSize: fontSize, baseURL: baseURL)
         } else {
-            // Mixed content - use flow layout
+            // Mixed content with math - use flow layout
+            // (WrappingHStack needed because MathView can't concatenate with Text)
             WrappingHStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                     renderSegment(segment)
@@ -516,29 +527,31 @@ struct TableContentView: View {
     let fontSize: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header
-            HStack(spacing: 0) {
-                ForEach(Array(table.head.cells.enumerated()), id: \.offset) { _, cell in
-                    TableCellContentView(cell: cell, baseURL: baseURL, fontSize: fontSize, isHeader: true)
-                }
-            }
-            .background(Color(NSColor.controlBackgroundColor))
-
-            // Body rows
-            ForEach(Array(table.body.rows.enumerated()), id: \.offset) { _, row in
+        ScrollView(.horizontal, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Header
                 HStack(spacing: 0) {
-                    ForEach(Array(row.cells.enumerated()), id: \.offset) { _, cell in
-                        TableCellContentView(cell: cell, baseURL: baseURL, fontSize: fontSize, isHeader: false)
+                    ForEach(Array(table.head.cells.enumerated()), id: \.offset) { _, cell in
+                        TableCellContentView(cell: cell, baseURL: baseURL, fontSize: fontSize, isHeader: true)
+                    }
+                }
+                .background(Color(NSColor.controlBackgroundColor))
+
+                // Body rows
+                ForEach(Array(table.body.rows.enumerated()), id: \.offset) { _, row in
+                    HStack(spacing: 0) {
+                        ForEach(Array(row.cells.enumerated()), id: \.offset) { _, cell in
+                            TableCellContentView(cell: cell, baseURL: baseURL, fontSize: fontSize, isHeader: false)
+                        }
                     }
                 }
             }
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         }
-        .overlay(
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 4))
         .padding(.vertical, 4)
     }
 }
@@ -575,30 +588,41 @@ struct WrappingHStack: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let result = layout(proposal: proposal, subviews: subviews)
-        for (index, position) in result.positions.enumerated() {
-            subviews[index].place(at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
-                                  proposal: .unspecified)
+        for (index, (position, size)) in zip(result.positions, result.sizes).enumerated() {
+            // Place with the same size we measured, so Text wraps correctly
+            subviews[index].place(
+                at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
+                proposal: ProposedViewSize(width: size.width, height: size.height)
+            )
         }
     }
 
-    private func layout(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, positions: [CGPoint]) {
+    private func layout(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, positions: [CGPoint], sizes: [CGSize]) {
         let maxWidth = proposal.width ?? .infinity
 
-        // First pass: group subviews into rows
-        var rows: [[LayoutSubviews.Element]] = []
-        var currentRow: [LayoutSubviews.Element] = []
+        // First pass: group subviews into rows, measuring with constrained width
+        // so Text views can wrap properly
+        var rows: [[(subview: LayoutSubviews.Element, size: CGSize)]] = []
+        var currentRow: [(subview: LayoutSubviews.Element, size: CGSize)] = []
         var currentX: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            // Measure with available width so Text can wrap
+            let availableWidth = maxWidth - currentX
+            let constrainedProposal = ProposedViewSize(width: availableWidth, height: nil)
+            var size = subview.sizeThatFits(constrainedProposal)
 
-            if currentX + size.width > maxWidth && currentX > 0 {
+            // If it doesn't fit and we have items on this row, wrap to next line
+            if size.width > availableWidth && currentX > 0 {
                 rows.append(currentRow)
                 currentRow = []
                 currentX = 0
+                // Re-measure with full width on new line
+                let fullWidthProposal = ProposedViewSize(width: maxWidth, height: nil)
+                size = subview.sizeThatFits(fullWidthProposal)
             }
 
-            currentRow.append(subview)
+            currentRow.append((subview: subview, size: size))
             currentX += size.width
         }
         if !currentRow.isEmpty {
@@ -607,26 +631,23 @@ struct WrappingHStack: Layout {
 
         // Second pass: calculate positions with vertical center alignment
         var positions: [CGPoint] = []
+        var sizes: [CGSize] = []
         var currentY: CGFloat = 0
         var totalWidth: CGFloat = 0
 
         for row in rows {
             // Find the maximum height in this row
-            var rowHeight: CGFloat = 0
-            for subview in row {
-                let dims = subview.dimensions(in: .unspecified)
-                rowHeight = max(rowHeight, dims.height)
-            }
+            let rowHeight = row.map { $0.size.height }.max() ?? 0
 
             // Place each subview vertically centered within the row
             var x: CGFloat = 0
-            for subview in row {
-                let dims = subview.dimensions(in: .unspecified)
+            for item in row {
                 // Center this view vertically within the row
-                let yOffset = (rowHeight - dims.height) / 2
+                let yOffset = (rowHeight - item.size.height) / 2
 
                 positions.append(CGPoint(x: x, y: currentY + yOffset))
-                x += dims.width
+                sizes.append(item.size)
+                x += item.size.width
                 totalWidth = max(totalWidth, x)
             }
 
@@ -635,7 +656,7 @@ struct WrappingHStack: Layout {
 
         let totalHeight = max(0, currentY - spacing) // Remove trailing spacing
 
-        return (CGSize(width: totalWidth, height: totalHeight), positions)
+        return (CGSize(width: min(totalWidth, maxWidth), height: totalHeight), positions, sizes)
     }
 }
 

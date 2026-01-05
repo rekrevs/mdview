@@ -4,7 +4,13 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$SCRIPT_DIR/mdview.app"
-BUILD_DIR="$SCRIPT_DIR/.build/debug"
+
+# Use release build if available, otherwise debug
+if [ -f "$SCRIPT_DIR/.build/release/mdview" ]; then
+    BUILD_DIR="$SCRIPT_DIR/.build/release"
+else
+    BUILD_DIR="$SCRIPT_DIR/.build/debug"
+fi
 
 # Create bundle structure
 mkdir -p "$APP_DIR/Contents/MacOS"
