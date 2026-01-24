@@ -5,8 +5,18 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$SCRIPT_DIR/mdview.app"
 
-# Use release build if available, otherwise debug
-if [ -f "$SCRIPT_DIR/.build/release/mdview" ]; then
+# Use the most recently modified build (debug or release)
+DEBUG_BIN="$SCRIPT_DIR/.build/debug/mdview"
+RELEASE_BIN="$SCRIPT_DIR/.build/release/mdview"
+
+if [ -f "$RELEASE_BIN" ] && [ -f "$DEBUG_BIN" ]; then
+    # Both exist - use the newer one
+    if [ "$DEBUG_BIN" -nt "$RELEASE_BIN" ]; then
+        BUILD_DIR="$SCRIPT_DIR/.build/debug"
+    else
+        BUILD_DIR="$SCRIPT_DIR/.build/release"
+    fi
+elif [ -f "$RELEASE_BIN" ]; then
     BUILD_DIR="$SCRIPT_DIR/.build/release"
 else
     BUILD_DIR="$SCRIPT_DIR/.build/debug"

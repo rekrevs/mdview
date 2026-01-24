@@ -526,23 +526,33 @@ struct TableContentView: View {
     let baseURL: URL?
     let fontSize: CGFloat
 
+    private var bodyRows: [Markdown.Table.Row] {
+        Array(table.body.rows)
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 0) {
-                // Header
-                HStack(spacing: 0) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                // Header row
+                GridRow {
                     ForEach(Array(table.head.cells.enumerated()), id: \.offset) { _, cell in
                         TableCellContentView(cell: cell, baseURL: baseURL, fontSize: fontSize, isHeader: true)
                     }
                 }
                 .background(Color(NSColor.controlBackgroundColor))
 
+                Divider()
+
                 // Body rows
-                ForEach(Array(table.body.rows.enumerated()), id: \.offset) { _, row in
-                    HStack(spacing: 0) {
+                ForEach(Array(bodyRows.enumerated()), id: \.offset) { rowIndex, row in
+                    GridRow {
                         ForEach(Array(row.cells.enumerated()), id: \.offset) { _, cell in
                             TableCellContentView(cell: cell, baseURL: baseURL, fontSize: fontSize, isHeader: false)
                         }
+                    }
+
+                    if rowIndex < bodyRows.count - 1 {
+                        Divider()
                     }
                 }
             }
@@ -568,10 +578,6 @@ struct TableCellContentView: View {
             .padding(.horizontal, 13)
             .padding(.vertical, 6)
             .frame(minWidth: 60, alignment: .leading)
-            .overlay(
-                Rectangle()
-                    .stroke(Color.secondary.opacity(0.3), lineWidth: 0.5)
-            )
     }
 }
 
