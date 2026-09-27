@@ -1,0 +1,48 @@
+[0/1] Planning build
+Building for production...
+[0/40] Write sources
+[1/40] Write swift-version--1AB21518FC5DEDBE.txt
+[2/40] Compiling CAtomic CAtomic.c
+[3/40] Compiling cmark-gfm houdini_href_e.c
+[4/40] Compiling cmark-gfm cmark_ctype.c
+[4/40] Compiling cmark-gfm cmark.c
+[6/40] Compiling cmark-gfm map.c
+[7/40] Compiling cmark-gfm buffer.c
+[8/40] Compiling cmark-gfm commonmark.c
+[9/40] Compiling cmark-gfm-extensions tasklist.c
+[10/40] Compiling cmark-gfm xml.c
+[11/40] Compiling cmark-gfm syntax_extension.c
+[12/40] Compiling cmark-gfm plugin.c
+[13/40] Compiling cmark-gfm references.c
+[14/40] Compiling cmark-gfm render.c
+[15/40] Compiling cmark-gfm registry.c
+[16/40] Compiling cmark-gfm plaintext.c
+[17/40] Compiling cmark-gfm-extensions ext_scanners.c
+[18/40] Compiling cmark-gfm-extensions strikethrough.c
+[19/40] Compiling cmark-gfm man.c
+[19/40] Compiling cmark-gfm-extensions tagfilter.c
+[21/40] Compiling cmark-gfm-extensions core-extensions.c
+[21/40] Write sources
+[23/40] Compiling cmark-gfm linked_list.c
+[24/40] Compiling cmark-gfm latex.c
+[25/40] Compiling cmark-gfm iterator.c
+[26/40] Compiling cmark-gfm node.c
+[27/40] Compiling cmark-gfm houdini_html_e.c
+[28/40] Compiling cmark-gfm blocks.c
+[29/40] Compiling cmark-gfm footnotes.c
+[30/40] Compiling cmark-gfm-extensions table.c
+[31/40] Compiling cmark-gfm houdini_html_u.c
+[32/40] Compiling cmark-gfm html.c
+[33/41] Compiling cmark-gfm-extensions autolink.c
+[34/41] Compiling cmark-gfm scanners.c
+[35/41] Compiling cmark-gfm arena.c
+[36/41] Compiling cmark-gfm inlines.c
+[37/41] Compiling cmark-gfm utf8.c
+[39/42] Compiling Markdown ChildIndexPath.swift
+[40/42] Compiling SwiftMath MTFontMathTableV2.swift
+[41/43] Compiling mdview ContentView.swift
+[41/43] Write Objects.LinkFileList
+ld: warning: search path '/opt/homebrew/lib/gcc/15' not found
+[42/43] Linking mdview
+Build complete! (37.79s)
+warning: '--build-system native' has been deprecated and will be removed in a future release; please report an issue at https://github.com/swiftlang/swift-package-manager/issues if you are unable to adopt the default build system.

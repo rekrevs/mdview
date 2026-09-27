@@ -1,0 +1,6 @@
+WATCH in-place: ["in-place-1"]
+WATCH atomic-1: ["atomic-1"]
+WATCH atomic-2: []
+WATCH in-place-after-atomic: []
+WATCH descriptor growth after 25 lifecycles: 25
+WATCH COMPLETE

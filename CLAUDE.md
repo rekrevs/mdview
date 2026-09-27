@@ -1,115 +1,46 @@
 # mdview
 
-> Native macOS markdown viewer with LaTeX math support
+Read `README.md` for supported features and user commands. Use Wotan for task work: `wotan/backlog.json` owns task state; `wotan/dev-log/` records plans, evidence and outcomes. Old completed tasks describe historical versions, not the current architecture.
 
-## Quick Start
+## Architecture
 
-```bash
-# Build and install
-make install
+Version 2 uses a SwiftUI document app with one `WKWebView` per reader window. The HTML document keeps selection, copying, math and text layout in one continuous DOM. Do not reintroduce individual SwiftUI text views for Markdown blocks.
 
-# Or manually
-swift build
-./bundle.sh
-cp -r mdview.app ~/Applications/
-```
+- `Sources/mdviewApp.swift`: native document app and keyboard commands.
+- `Sources/ContentView.swift`: document state, per-window zoom/find and reload integration.
+- `Sources/ReaderWebView.swift`: WebKit hosting, navigation and keyboard scrolling.
+- `Sources/LinkDestination.swift`: URL classification for anchors, local files and external destinations.
+- `Sources/Resources/Web/`: offline page, renderer, CSS, vendored libraries/fonts/licenses.
+- `Tests/mdviewTests/`: Swift regression tests.
+- `Tests/Renderer/`: Node renderer regression tests.
+- `scripts/check-reader.py`: native GUI verification entry point.
 
-## Tech Stack
+Rendering uses markdown-it, KaTeX and highlight.js, with raw HTML disabled. Libraries and fonts are pinned local assets; the installed reader must work without access to the source checkout or a CDN. `Package.swift` copies the complete `Resources` directory. Bundle lookup must prefer resources inside the installed app before SwiftPM's development fallback.
 
-- **Language**: Swift 5.9+
-- **UI Framework**: SwiftUI
-- **Markdown**: [swift-markdown](https://github.com/swiftlang/swift-markdown) (Apple's cmark-gfm based parser)
-- **Math**: [SwiftMath](https://github.com/mgriebling/SwiftMath) (LaTeX rendering)
-- **Target**: macOS 13.0+
-- **Build**: Swift Package Manager (no Xcode required)
-
-## Project Structure
-
-```
-mdview/
-├── Package.swift         # SPM package definition
-├── Sources/
-│   ├── mdviewApp.swift   # App entry point
-│   └── ContentView.swift # Main view with markdown rendering
-├── mdview.app/           # Built app bundle
-├── CLAUDE.md             # This file
-└── wotan/                # Task management
-```
-
-## Development
+## Build and verification
 
 ```bash
-# Build
-swift build
-
-# Build release
-swift build -c release
-
-# Clean
-swift package clean
-
-# Update dependencies
-swift package update
-```
-
-## Build & Install
-
-```bash
-# Full build, bundle, and install to ~/Applications
-make install
-
-# Just build
 make build
-
-# Just create app bundle (after build)
-make bundle
-
-# Clean everything
-make clean
+make check
+make gui-test
+make release
+make validate-bundle
 ```
 
-The `bundle.sh` script handles creating the .app structure and code signing.
+`make install` builds release by default and preserves the old installed app as a timestamped backup. Use `CONFIGURATION=debug` to override. Do not delete an existing user installation. For development, launch the intended bundle explicitly; Launch Services can otherwise choose an older copy in `~/Applications`.
 
-## Verification
+Use `scripts/swift-tool.sh` for repository builds/tests. It normally invokes SwiftPM unchanged, but selects an installed SDK 26.5 with `--build-system native` when SDK 27 is selected (observed SwiftUI macro incompatibility). `MDVIEW_SDK` overrides that choice. Do not mutate global SDK/toolchain settings. A filesystem sandbox may require running builds outside it so Swift can access its compiler caches.
 
-Before committing:
-```bash
-# Build succeeds
-swift build
+Swift tests use Swift Testing. When only Command Line Tools are installed (Testing.framework present and XCTest.framework absent), the wrapper supplies the shipped Testing framework, macro plugin and runtime search paths for `test` only. Xcode builds and the shipped app do not need those test paths.
 
-# SwiftLint (if installed)
-swiftlint
-```
+For rendering or interaction changes, reproduce the issue and test the actual WebKit page. Require clipboard/selection, link destinations and repeated atomic-save evidence as relevant; compile success and process presence are insufficient. GUI checks require an active macOS desktop. Tests that inspect DOM or route classification are complementary to real window interaction, not substitutes for it.
 
-## Implementation Notes
+## Implementation constraints
 
-### Custom Markdown Renderer
-
-Uses swift-markdown for AST parsing and custom SwiftUI view composition for rendering:
-
-- **Math Support**: Inline `$...$` and block `$$...$$` LaTeX via SwiftMath
-- **GFM support**: Tables, strikethrough, task lists
-- **No HTML rendering**: Raw HTML tags are ignored (by design)
-- **Code blocks**: Math delimiters in code blocks are NOT rendered (AST-aware)
-
-Key files:
-- `ContentView.swift` - Main renderer with `MarkdownContentView`, `MathAwareParagraph`
-- `MathView.swift` - NSViewRepresentable wrapper for MTMathUILabel
-
-### macOS Keyboard Shortcuts
-
-- **Character shortcuts** (+, -, 0, etc.): Use SwiftUI `CommandGroup` with `.keyboardShortcut()`
-  - Handles keyboard localization automatically (Swedish, German, etc.)
-  - DON'T use NSView `keyDown` with `charactersIgnoringModifiers` - fails on non-US keyboards
-- **Physical keys** (arrows, space, home, end): CAN use `keyCode` - hardware-based, same on all keyboards
-
-### Build/Test Workflow
-
-- macOS may launch old version from `~/Applications` instead of newly built version
-- Always run: `cp -R mdview.app ~/Applications/` after `./bundle.sh` to test correct version
-- Or use `make install` which does this automatically
-
-### File Watching
-
-- `DispatchSource.makeFileSystemObjectSource` (kqueue) - efficient kernel-based file monitoring
-- Store markdown text as `@State` separate from `FileDocument` for live updates on external changes
+- Keep keyboard character shortcuts in SwiftUI commands to preserve keyboard layout behavior. Physical scrolling keys may use macOS key codes.
+- Scope zoom and find actions to the active document; avoid broadcasting state changes to every window.
+- Preserve nested Markdown content, whitespace and math environments. On unsupported input, show source or a clear error instead of dropping content.
+- Keep raw Markdown HTML inert; only bundled scripts execute. Explicitly classify link destinations before opening them.
+- File reload must survive inode replacement during atomic saves and close every watcher descriptor. Keep last good document content visible if a reload temporarily fails.
+- Keep SwiftPM and app-bundle resources in sync. Validate a relocated bundle with no build-tree resource fallback before declaring packaging complete.
+- Update README and dependency licenses/manifest when supported behavior or vendored libraries change.

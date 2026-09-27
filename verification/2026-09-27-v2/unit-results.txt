@@ -1,0 +1,8 @@
+2026-09-27 final make check: PASS
+Swift Testing: 11/11, including 7 filesystem lifecycle tests and 4 link-routing tests.
+Node renderer: 15/15.
+Native reader: 30/30 (checks.log).
+Actual release-shell accessibility sequence: 12/12 (ShellChecks.applescript).
+Debug and release builds, bundle layout and strict signature validation: PASS.
+Temporary install backup behavior: PASS. Actual install to ~/Applications: PASS; previous app retained.
+git diff --check: PASS.

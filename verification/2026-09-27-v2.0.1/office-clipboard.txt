@@ -1,0 +1,47 @@
+Alpha first paragraph.
+
+Bravo second paragraph.
+
+Reader checks
+
+Styled bold text. Other bold text.
+
+External · Local · Anchor
+
+[ ] Pending
+[x] Complete
+
+
+Nested heading
+
+Nested list
+
+
+let nested = 42
+
+
+
+
+    first_line = 1
+    second_line = 2
+
+
+Existing icon
+
+Target
+
+Inline $E=mc^2$ and bold $x^2$.
+
+
+
+$$
+\begin{pmatrix} a & b \\ c & d \end{pmatrix}
+$$
+
+
+
+$$\frac{1}{2}
+$$
+
+Left	Right	Centre
+$x^2$	123	c

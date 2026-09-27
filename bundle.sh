@@ -1,34 +1,37 @@
 #!/bin/bash
-# Bundle mdview as a macOS app
-set -e
-
+# Bundle an explicitly selected SwiftPM configuration; never choose by mtime.
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_DIR="$SCRIPT_DIR/mdview.app"
-
-# Use the most recently modified build (debug or release)
-DEBUG_BIN="$SCRIPT_DIR/.build/debug/mdview"
-RELEASE_BIN="$SCRIPT_DIR/.build/release/mdview"
-
-if [ -f "$RELEASE_BIN" ] && [ -f "$DEBUG_BIN" ]; then
-    # Both exist - use the newer one
-    if [ "$DEBUG_BIN" -nt "$RELEASE_BIN" ]; then
-        BUILD_DIR="$SCRIPT_DIR/.build/debug"
-    else
-        BUILD_DIR="$SCRIPT_DIR/.build/release"
-    fi
-elif [ -f "$RELEASE_BIN" ]; then
-    BUILD_DIR="$SCRIPT_DIR/.build/release"
-else
-    BUILD_DIR="$SCRIPT_DIR/.build/debug"
+configuration=debug
+case "${1:-}" in
+    "") ;;
+    --configuration)
+        configuration="${2:-}"
+        if [[ $# -ne 2 ]]; then echo "Usage: $0 [--configuration debug|release]" >&2; exit 2; fi
+        ;;
+    *) echo "Usage: $0 [--configuration debug|release]" >&2; exit 2 ;;
+esac
+case "$configuration" in debug|release) ;; *) echo "Invalid build configuration: $configuration" >&2; exit 2 ;; esac
+BUILD_DIR="$("$SCRIPT_DIR/scripts/swift-tool.sh" build -c "$configuration" --show-bin-path)"
+if [[ ! -x "$BUILD_DIR/mdview" ]]; then
+    echo "Build $configuration first: make build CONFIGURATION=$configuration" >&2
+    exit 1
 fi
-
-# Create bundle structure
-mkdir -p "$APP_DIR/Contents/MacOS"
-mkdir -p "$APP_DIR/Contents/Resources"
-
-# Copy binary
+if [[ ! -d "$BUILD_DIR/mdview_mdview.bundle" ]]; then
+    echo "Missing renderer resource bundle; rebuild $configuration before packaging." >&2
+    exit 1
+fi
+staging="$(mktemp -d "$SCRIPT_DIR/.mdview-bundle.XXXXXX")"
+trap 'rm -rf "$staging"' EXIT
+APP_DIR="$staging/mdview.app"
+mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BUILD_DIR/mdview" "$APP_DIR/Contents/MacOS/"
-
+# Explicit current-package inventory avoids shipping obsolete dependencies left
+# in .build by an earlier version (for example SwiftMath_SwiftMath.bundle).
+for resource in "$BUILD_DIR/mdview_mdview.bundle"; do
+    ditto "$resource" "$APP_DIR/Contents/Resources/$(basename "$resource")"
+done
+cp "$SCRIPT_DIR/LICENSE" "$APP_DIR/Contents/Resources/LICENSE.txt"
 # Copy icon
 if [ -f "$SCRIPT_DIR/AppIcon.icns" ]; then
     cp "$SCRIPT_DIR/AppIcon.icns" "$APP_DIR/Contents/Resources/"
@@ -49,9 +52,9 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
 	<key>CFBundleDisplayName</key>
 	<string>mdview</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>20001</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>2.0.1</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -74,7 +77,6 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>net.daringfireball.markdown</string>
-				<string>public.plain-text</string>
 			</array>
 		</dict>
 	</array>
@@ -106,7 +108,15 @@ PLIST
 # Create PkgInfo
 echo -n "APPL????" > "$APP_DIR/Contents/PkgInfo"
 
-# Sign the app (ad-hoc)
+# Sign only after all resources are in place, then verify the staged result.
 codesign --sign - --force --deep "$APP_DIR"
-
-echo "Created $APP_DIR"
+"$SCRIPT_DIR/scripts/validate-bundle.sh" "$APP_DIR"
+# mdview.app is a generated build artifact. Stage first so failures leave it intact.
+if [[ -e "$SCRIPT_DIR/mdview.app" ]]; then
+    mv "$SCRIPT_DIR/mdview.app" "$staging/previous.app"
+fi
+if ! mv "$APP_DIR" "$SCRIPT_DIR/mdview.app"; then
+    if [[ -e "$staging/previous.app" ]]; then mv "$staging/previous.app" "$SCRIPT_DIR/mdview.app"; fi
+    exit 1
+fi
+echo "Created $SCRIPT_DIR/mdview.app ($configuration, version 2.0.1)"

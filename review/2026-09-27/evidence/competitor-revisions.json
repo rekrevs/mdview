@@ -1,0 +1,42 @@
+{
+  "mdview-review-Markd": {
+    "origin": "https://github.com/chathurank/Markd.git",
+    "sha": "e19e66d413ac2466a20ad02df33af742d7dc2c88",
+    "date": "2026-04-17T10:28:47+05:30"
+  },
+  "mdview-review-b451c": {
+    "origin": "https://github.com/b451c/quickmd.git",
+    "sha": "9956d0220e59d32e24929edff1ddf10b15fd6d6d",
+    "date": "2026-09-10T14:17:15+02:00"
+  },
+  "mdview-review-macdown3000": {
+    "origin": "https://github.com/schuyler/macdown3000.git",
+    "sha": "962df74793d1d98a0ad9e85628f0a1d6c24769e2",
+    "date": "2026-08-14T20:27:39Z"
+  },
+  "mdview-review-thgossler": {
+    "origin": "https://github.com/thgossler/mdv.git",
+    "sha": "292724fd0156b3e73069dab2371a965d634ad5df",
+    "date": "2026-09-02T19:43:04+02:00"
+  },
+  "mdview-review-macmark": {
+    "origin": "https://github.com/gitgonow/macmark.git",
+    "sha": "99b954b7f8be52a4e5ac83b3826a076ebe9d034e",
+    "date": "2026-09-22T09:24:02-04:00"
+  },
+  "mdview-review-yeduk3": {
+    "origin": "https://github.com/yeduk3/Glim.git",
+    "sha": "c24dc05e061ac66d3ea51c8a93933b5cf4841447",
+    "date": "2026-07-29T13:24:18+09:00"
+  },
+  "mdview-review-ekino": {
+    "origin": "https://github.com/ekino/MarkdownViewer.git",
+    "sha": "59f2a21967b1ca3113cdebc8523f2fc6f0076288",
+    "date": "2026-08-13T21:48:29+02:00"
+  },
+  "mdview-review-rajatarya": {
+    "origin": "https://github.com/rajatarya/mdviewer.git",
+    "sha": "9b73da43b45550c5fce93bb63e5bcfc67e6596c6",
+    "date": "2026-08-29T12:08:39-05:00"
+  }
+}

@@ -1,0 +1,9 @@
+PASS real Word heading style
+PASS real editable Word table, six cells
+PASS borders on every Word table cell
+PASS right and centre column alignment
+PASS code indentation preserved on both lines
+PASS monospace Word code style
+PASS absolute local and external link targets
+PASS formula source once, unchanged fallback
+RESULT 8/8 Word document checks passed

@@ -1,0 +1,260 @@
+OS Version 27.0 (Build 26A428)
+
+CASE 01-reading AST:
+Document
+├─ Heading level: 1
+│  └─ Text "Reading and links"
+├─ Paragraph
+│  ├─ Text "Alpha first paragraph with "
+│  ├─ Strong
+│  │  └─ Text "bold"
+│  ├─ Text " and "
+│  ├─ Emphasis
+│  │  └─ Text "italic"
+│  ├─ Text " and "
+│  ├─ Strikethrough
+│  │  └─ Text "deleted"
+│  └─ Text "."
+├─ Paragraph
+│  └─ Text "Bravo second paragraph to select together with Alpha."
+├─ Paragraph
+│  ├─ Link destination: "https://example.com"
+│  │  └─ Text "External link"
+│  ├─ Text " — "
+│  ├─ Link destination: "../../../README.md"
+│  │  └─ Text "Local link"
+│  ├─ Text " — "
+│  └─ Link destination: "#target"
+│     └─ Text "Heading"
+├─ UnorderedList
+│  ├─ ListItem checkbox: [ ]
+│  │  └─ Paragraph
+│  │     └─ Text "Pending item"
+│  ├─ ListItem checkbox: [x]
+│  │  └─ Paragraph
+│  │     └─ Text "Completed item"
+│  └─ ListItem
+│     └─ Paragraph
+│        └─ Text "Normal item"
+├─ Paragraph
+│  └─ Image source: "../../../AppIcon.iconset/icon_128x128.png"
+│     └─ Text "Existing icon"
+├─ Heading level: 2
+│  └─ Text "Target"
+└─ Paragraph
+   └─ Text "End of document."
+MATH LABELS 01-reading: []
+VIEWS 01-reading: ["NSHostingView<ContentView>", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<KeyboardScrollView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>>>", "KeyboardCaptureView", "NSHostingView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>", "PlatformContainer", "HostingScrollView", "BackdropView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "NSScrollPocket", "PocketMask", "NSView", "NSView", "PocketBlur", "PortalView", "NSHardPocketView", "_NSLayerBasedFillColorView", "LuminanceAdjustment", "NSView", "NSView", "BackdropView", "_NSScrollViewContentBackgroundView", "NSView", "NSView", "NSView", "PortalView", "NSScroller"]
+
+CASE 02-math AST:
+Document
+├─ Heading level: 1
+│  └─ Text "Math contexts"
+├─ Paragraph
+│  └─ Text "Simple: $E = mc^2$."
+├─ Paragraph
+│  └─ Text "Display one line: $$x^2 + y^2 = z^2$$"
+├─ Paragraph
+│  ├─ Text "$$"
+│  ├─ SoftBreak
+│  ├─ Text "\int_0^1 x^2 dx = \frac{1}{3}"
+│  ├─ SoftBreak
+│  └─ Text "$$"
+├─ Paragraph
+│  └─ Strong
+│     └─ Text "Math inside bold: $x^2$"
+├─ Heading level: 2
+│  └─ Text "Heading $x^2$"
+├─ Table alignments: |-|-|
+│  ├─ Head
+│  │  ├─ Cell
+│  │  │  └─ Text "Formula"
+│  │  └─ Cell
+│  │     └─ Text "Meaning"
+│  └─ Body
+│     └─ Row
+│        ├─ Cell
+│        │  └─ Text "$x^2$"
+│        └─ Cell
+│           └─ Text "square"
+├─ CodeBlock language: math
+│  x^2 + y^2 = z^2
+└─ Paragraph
+   └─ Text "Escaped dollars: $5 and $10."
+MATH LABELS 02-math: ["E = mc^2", "x^2 + y^2 = z^2", "5 and "]
+VIEWS 02-math: ["NSHostingView<ContentView>", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<KeyboardScrollView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>>>", "KeyboardCaptureView", "NSHostingView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>", "PlatformContainer", "HostingScrollView", "BackdropView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "PlatformContainer", "HostingScrollView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "NSScroller", "_NSGraphicsView", "PlatformContainer", "HostingScrollView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "NSScrollPocket", "PocketMask", "NSView", "NSView", "PocketBlur", "PortalView", "NSHardPocketView", "_NSLayerBasedFillColorView", "LuminanceAdjustment", "NSView", "NSView", "BackdropView", "_NSScrollViewContentBackgroundView", "NSView", "NSView", "NSView", "PortalView", "NSScroller"]
+
+CASE 03-structure AST:
+Document
+├─ Heading level: 1
+│  └─ Text "Nested content"
+├─ BlockQuote
+│  ├─ Paragraph
+│  │  └─ Text "Visible paragraph"
+│  ├─ Heading level: 2
+│  │  └─ Text "Quote heading SHOULD APPEAR"
+│  ├─ UnorderedList
+│  │  └─ ListItem
+│  │     └─ Paragraph
+│  │        └─ Text "Quote item SHOULD APPEAR"
+│  └─ CodeBlock language: swift
+│     print("QUOTE CODE SHOULD APPEAR")
+├─ UnorderedList
+│  └─ ListItem
+│     ├─ Paragraph
+│     │  └─ Text "Visible list item"
+│     └─ CodeBlock language: swift
+│        print("LIST CODE SHOULD APPEAR")
+├─ Table alignments: |l|r|c|
+│  ├─ Head
+│  │  ├─ Cell
+│  │  │  └─ Text "Left"
+│  │  ├─ Cell
+│  │  │  └─ Text "Right"
+│  │  └─ Cell
+│  │     └─ Text "Centre"
+│  └─ Body
+│     ├─ Row
+│     │  ├─ Cell
+│     │  │  └─ Text "short"
+│     │  ├─ Cell
+│     │  │  └─ Text "123"
+│     │  └─ Cell
+│     │     └─ Text "value"
+│     └─ Row
+│        ├─ Cell
+│        │  └─ Text "considerably longer"
+│        ├─ Cell
+│        │  └─ Text "456789"
+│        └─ Cell
+│           └─ Text "other"
+└─ CodeBlock language: python
+       first_line_indent = 4
+       second_line_indent = 4
+MATH LABELS 03-structure: []
+VIEWS 03-structure: ["NSHostingView<ContentView>", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<KeyboardScrollView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>>>", "KeyboardCaptureView", "NSHostingView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>", "PlatformContainer", "HostingScrollView", "BackdropView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "PlatformContainer", "HostingScrollView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "_NSGraphicsView", "AppKitTextInteractionView", "NSScroller", "_NSGraphicsView", "PlatformContainer", "HostingScrollView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "NSScrollPocket", "PocketMask", "NSView", "NSView", "PocketBlur", "PortalView", "NSHardPocketView", "_NSLayerBasedFillColorView", "LuminanceAdjustment", "NSView", "NSView", "BackdropView", "_NSScrollViewContentBackgroundView", "NSView", "NSView", "NSView", "PortalView", "NSScroller"]
+
+CASE 04-math-integrity AST:
+Document
+├─ Heading level: 1
+│  └─ Text "Formula integrity"
+├─ Paragraph
+│  └─ Text "$$\begin{pmatrix} a & b \ c & d \end{pmatrix}$$"
+├─ Paragraph
+│  └─ Text "$a_1 + b_2 + c_3$"
+├─ Paragraph
+│  ├─ Text "$a"
+│  ├─ Emphasis
+│  │  └─ Text "b"
+│  └─ Text "c$"
+├─ Paragraph
+│  └─ Text "Inline before display: $a$ then $$b$$."
+├─ Paragraph
+│  ├─ InlineCode `literal $x$`
+│  └─ Text " and a code block:"
+└─ CodeBlock language: text
+   $x$ and $$y$$
+MATH LABELS 04-math-integrity: ["\\begin{pmatrix} a & b \\ c & d \\end{pmatrix}", "a_1 + b_2 + c_3", "b"]
+VIEWS 04-math-integrity: ["NSHostingView<ContentView>", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<KeyboardScrollView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>>>", "KeyboardCaptureView", "NSHostingView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>", "PlatformContainer", "HostingScrollView", "BackdropView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "AppKitTextInteractionView", "_NSGraphicsView", "PlatformContainer", "HostingScrollView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "NSScrollPocket", "PocketMask", "NSView", "NSView", "PocketBlur", "PortalView", "NSHardPocketView", "_NSLayerBasedFillColorView", "LuminanceAdjustment", "NSView", "NSView", "BackdropView", "_NSScrollViewContentBackgroundView", "NSView", "NSView", "NSView", "PortalView", "NSScroller"]
+
+CASE 05-flow-narrow AST:
+Document
+└─ Paragraph
+   └─ Text "A long introductory sentence that should wrap continuously with the formula $x^2$ and a long continuation of the same paragraph which should continue on the same baseline and flow naturally onto the next line."
+MATH LABELS 05-flow-narrow: ["x^2"]
+VIEWS 05-flow-narrow: ["NSHostingView<ContentView>", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<KeyboardScrollView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>>>", "KeyboardCaptureView", "NSHostingView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>", "PlatformContainer", "HostingScrollView", "BackdropView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "NSScrollPocket", "PocketMask", "NSView", "NSView", "PocketBlur", "PortalView", "NSHardPocketView", "_NSLayerBasedFillColorView", "LuminanceAdjustment", "NSView", "NSView", "BackdropView", "_NSScrollViewContentBackgroundView", "NSView", "NSView", "NSView", "PortalView", "NSScroller"]
+
+CASE 06-existing-fixture AST:
+Document
+├─ Heading level: 1
+│  └─ Text "Math Test Document"
+├─ Paragraph
+│  └─ Text "This document tests LaTeX math rendering in mdview."
+├─ Heading level: 2
+│  └─ Text "Inline Math"
+├─ Paragraph
+│  └─ Text "Einstein’s famous equation: $E = mc^2$"
+├─ Paragraph
+│  └─ Text "The quadratic formula is $x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}$ and it’s beautiful."
+├─ Heading level: 2
+│  └─ Text "Block Math"
+├─ Paragraph
+│  └─ Text "Here’s the Gaussian integral:"
+├─ Paragraph
+│  └─ Text "$$\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}$$"
+├─ Paragraph
+│  └─ Text "And Euler’s identity:"
+├─ Paragraph
+│  └─ Text "$$e^{i\pi} + 1 = 0$$"
+├─ Heading level: 2
+│  └─ Text "Mixed Content"
+├─ Paragraph
+│  ├─ Text "Regular markdown with "
+│  ├─ Strong
+│  │  └─ Text "bold"
+│  ├─ Text " and "
+│  ├─ Emphasis
+│  │  └─ Text "italic"
+│  └─ Text " text works fine."
+├─ UnorderedList
+│  ├─ ListItem
+│  │  └─ Paragraph
+│  │     └─ Text "List item 1"
+│  └─ ListItem
+│     └─ Paragraph
+│        └─ Text "List item 2 with math: $a^2 + b^2 = c^2$"
+├─ BlockQuote
+│  └─ Paragraph
+│     └─ Text "Blockquote test"
+├─ Heading level: 3
+│  └─ Text "More Math"
+├─ Paragraph
+│  └─ Text "The sum of natural numbers:"
+├─ Paragraph
+│  └─ Text "$$\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}$$"
+├─ Paragraph
+│  └─ Text "Matrix example:"
+├─ Paragraph
+│  └─ Text "$$\begin{pmatrix} a & b \ c & d \end{pmatrix}$$"
+├─ Heading level: 2
+│  └─ Text "Code Block Test"
+├─ CodeBlock language: python
+│  def quadratic(a, b, c):
+│      return (-b + (b**2 - 4*a*c)**0.5) / (2*a)
+└─ Paragraph
+   └─ Text "The end."
+MATH LABELS 06-existing-fixture: ["E = mc^2", "x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}", "\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}", "e^{i\\pi} + 1 = 0", "a^2 + b^2 = c^2", "\\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}", "\\begin{pmatrix} a & b \\ c & d \\end{pmatrix}"]
+VIEWS 06-existing-fixture: ["NSHostingView<ContentView>", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<KeyboardScrollView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>>>", "KeyboardCaptureView", "NSHostingView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>", "PlatformContainer", "HostingScrollView", "BackdropView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "_NSGraphicsView", "PlatformContainer", "HostingScrollView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "AppKitTextInteractionView", "NSScrollPocket", "PocketMask", "NSView", "NSView", "PocketBlur", "PortalView", "NSHardPocketView", "_NSLayerBasedFillColorView", "LuminanceAdjustment", "NSView", "NSView", "BackdropView", "_NSScrollViewContentBackgroundView", "NSView", "NSView", "NSView", "PortalView", "NSScroller"]
+
+CASE 08-dark AST:
+Document
+├─ Heading level: 1
+│  └─ Text "Dark mode"
+├─ Paragraph
+│  ├─ Text "Ordinary "
+│  ├─ Strong
+│  │  └─ Text "bold"
+│  └─ Text " text with $x^2$."
+├─ CodeBlock language: swift
+│  let value = 42
+└─ BlockQuote
+   └─ Paragraph
+      └─ Text "A quote"
+MATH LABELS 08-dark: ["x^2"]
+VIEWS 08-dark: ["NSHostingView<ContentView>", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<KeyboardScrollView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>>>", "KeyboardCaptureView", "NSHostingView<ScrollViewReader<ModifiedContent<ScrollView<IDView<ModifiedContent<ModifiedContent<ModifiedContent<MarkdownContentView, _PaddingLayout>, TextSelectabilityModifier<EnabledTextSelectability>>, _FlexFrameLayout>, String>>, _AppearanceActionModifier>>>", "PlatformContainer", "HostingScrollView", "BackdropView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitTextInteractionView", "AppKitPlatformViewHost<PlatformViewRepresentableAdaptor<MathViewRepresentable>>", "MTMathUILabel", "MTLabel", "NSTextFieldSimpleLabel", "AppKitTextInteractionView", "_NSGraphicsView", "PlatformContainer", "HostingScrollView", "HostingClipView", "DocumentView", "PlatformGroupContainer", "AppKitTextInteractionView", "AppKitTextInteractionView", "NSScrollPocket", "PocketMask", "NSView", "NSView", "PocketBlur", "PortalView", "NSHardPocketView", "_NSLayerBasedFillColorView", "LuminanceAdjustment", "NSView", "NSView", "BackdropView", "_NSScrollViewContentBackgroundView", "NSView", "NSView", "NSView", "PortalView", "NSScroller"]
+INTERACTION key=true appActive=true
+INTERACTION text 0 frame (16.0, 617.0, 140.0, 17.0)
+INTERACTION text 1 frame (16.0, 592.0, 162.5, 17.0)
+INTERACTION text 2 frame (16.0, 567.0, 78.5, 17.0)
+COPY single handled=true value=Optional("Alpha first paragraph.") responder=Optional(<SwiftUI.AppKitTextInteractionView: 0x7b1fbf6100>)
+COPY cross handled=true value=Optional("Alpha first paragraph.") responder=Optional(<SwiftUI.AppKitTextInteractionView: 0x7b1fbf6100>)
+LINK accessibility role=Optional(__C.NSAccessibilityRole(_rawValue: AXStaticText)) actions=[]
+COPY select-all handled=true/true value=Optional("Alpha first paragraph.")
+ZOOM two windows before=[56.5, 56.5] after=[62.0, 62.0]
+PERF 200 paragraphs host+layout+0.2s pump seconds=0.25600504875183105
+SCROLL key=125 modifiers=0 y=40.0
+SCROLL key=125 modifiers=1048576 y=4374.0
+SCROLL key=115 modifiers=0 y=0.0
+LINK markdown click callbacks=[]
+LINK after positive control callbacks=[https://example.com/control]
+HARNESS COMPLETE

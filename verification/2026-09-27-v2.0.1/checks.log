@@ -1,0 +1,36 @@
+PASS active native test window
+PASS resources resolved from relocated app, not build tree
+PASS inline, styled, block, fenced and table math render
+PASS matrix retains both rows
+PASS task list states retained
+PASS nested heading/list/code retained
+PASS code whitespace exact
+PASS GFM table alignment
+PASS relative image with encoded space loaded through local handler
+CROSS COPY "Alpha first paragraph.\n\nBravo second paragraph."
+PASS native drag + Copy spans two paragraphs
+PASS native Copy includes each formula's LaTeX once
+PASS native Copy spans lists and preserves code indent
+PASS native HTML clipboard carries table and code formatting
+PASS native HTML clipboard resolves relative document links
+PASS native partial selection retains bold without unselected characters
+PASS code-copy button preserves exact source
+PASS clicked external link routes to system endpoint
+PASS relative .markdown click decodes path and fragment
+PASS heading link scrolls to target
+PASS same-file link without fragment returns to top
+PASS Find matches across bold/plain text nodes
+PASS unchanged search binding does not reset active match
+PASS Find next and previous update match index
+PASS zoom state isolated per document
+PASS other document's rendered zoom unchanged
+PASS three consecutive atomic saves reload actual reader
+PASS dark mode updates document colors
+PASS inline math flows within 500-point window
+2000 paragraphs ready in 0.007608890533447266 s (single warm observation)
+PASS 2000-paragraph document renders
+PASS Cmd+Down reading key reaches document end
+PASS reload retains reading position
+PASS document scripts and unsafe link schemes cannot execute
+PASS no native load errors during checks
+RESULT 33/33 passed

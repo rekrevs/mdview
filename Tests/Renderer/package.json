@@ -1,0 +1,6 @@
+{
+  "name": "mdview-renderer-tests",
+  "private": true,
+  "scripts": { "test": "node --test renderer.test.cjs" },
+  "devDependencies": { "jsdom": "26.1.0" }
+}
