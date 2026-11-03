@@ -1,6 +1,6 @@
 {
   "version": "2.1.0",
-  "next_id": 26,
+  "next_id": 27,
   "tasks": [
     {
       "id": "T-0001",
@@ -138,6 +138,12 @@
       "size": "M",
       "status": "READY",
       "summary": "Support emoji shortcodes and light/dark image variants"
+    },
+    {
+      "id": "T-0026",
+      "size": "S",
+      "status": "DONE",
+      "summary": "Fix quadratic render time for many identical headings"
     }
   ]
 }

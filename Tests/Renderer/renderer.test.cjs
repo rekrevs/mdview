@@ -651,3 +651,11 @@ test('outline navigation prefers a heading over an author element with the same 
   r.window.mdview.scrollToHeading('intro'); assert.equal(target.tagName, 'P');
   r.close();
 });
+test('many identical headings get unique ids in linear time', () => {
+  const r = reader();
+  const start = Date.now(); r.render('\n='.repeat(16000) + 'x');
+  assert.ok(Date.now() - start < 1500, `took ${Date.now() - start} ms`);
+  r.render('# A\n\n# A\n\n# A-1\n\n# A');
+  assert.deepEqual(Array.from(r.root.querySelectorAll('h1'), h => h.id), ['a', 'a-1', 'a-1-1', 'a-2']);
+  r.close();
+});

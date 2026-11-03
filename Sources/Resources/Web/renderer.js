@@ -254,14 +254,17 @@
       for (let sub = 0; sub < Math.max(1, item.count); sub++) used.add(footnoteIds(item.label, sub).ref);
     }
     state.env.headings = [];
+    const suffixes = new Map();
     for (let i = 0; i < state.tokens.length; i++) {
       const token = state.tokens[i];
       if (token.type === 'heading_open') {
         const inline = state.tokens[i + 1];
         const title = (inline.children || []).filter(t => !['html_inline', 'link_open', 'link_close'].includes(t.type)).map(t => t.type === 'image' ? t.content : t.content || '').join('');
         const slug = title.toLowerCase().replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '').replace(/\s/g, '-') || 'section';
-        let id = slug, suffix = 0;
+        // Remember the last suffix per slug so many identical headings stay linear.
+        let id = slug, suffix = suffixes.get(slug) || 0;
         while (used.has(id)) id = `${slug}-${++suffix}`;
+        suffixes.set(slug, suffix);
         used.add(id); token.attrSet('id', id);
         state.env.headings.push({ id, title, level: Number(token.tag.slice(1)) });
       }
@@ -348,7 +351,7 @@
       if (candidates.length && candidates.every(Boolean)) source.setAttribute('srcset', candidates.join(', '));
       else source.removeAttribute('srcset');
     });
-    root.replaceChildren(...template.content.childNodes);
+    root.replaceChildren(template.content); // Moving the fragment avoids per-node spreading.
     lastMarkdown = markdown; lastBaseURL = baseURL;
     window.scrollTo(0, oldScroll);
     if (findQuery) find(findQuery, 1, true);
