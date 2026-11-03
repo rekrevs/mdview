@@ -56,9 +56,9 @@ cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
 	<key>CFBundleDisplayName</key>
 	<string>mdview</string>
 	<key>CFBundleVersion</key>
-	<string>20001</string>
+	<string>20100</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.0.1</string>
+	<string>2.1.0</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -183,4 +183,4 @@ if ! mv "$APP_DIR" "$SCRIPT_DIR/mdview.app"; then
     if [[ -e "$staging/previous.app" ]]; then mv "$staging/previous.app" "$SCRIPT_DIR/mdview.app"; fi
     exit 1
 fi
-echo "Created $SCRIPT_DIR/mdview.app ($configuration, version 2.0.1)"
+echo "Created $SCRIPT_DIR/mdview.app ($configuration, version 2.1.0)"
