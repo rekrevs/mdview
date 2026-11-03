@@ -26,7 +26,29 @@ A macOS Markdown reader with a native document window and one continuous, select
 
 The renderer, syntax highlighter, math library, diagram library and fonts are included in the app. They require no CDN or runtime download. Images using HTTP/HTTPS still require a network connection.
 
-This is a read-only viewer. Author HTML is limited to the sanitized subset above and never runs scripts; MDX, PDF export and Finder Quick Look are not implemented. KaTeX supports a subset of LaTeX, and is not identical to GitHub's MathJax renderer. Unsupported formulas remain visible as source with an error indication. Task checkboxes display the document state without editing it.
+This is a read-only viewer. Author HTML is limited to the sanitized subset above and never runs scripts; MDX and PDF export are not implemented. KaTeX supports a subset of LaTeX, and is not identical to GitHub's MathJax renderer. Unsupported formulas remain visible as source with an error indication. Task checkboxes display the document state without editing it.
+
+## Quick Look
+
+mdview includes a Finder Quick Look preview extension (`mdview.app/Contents/PlugIns/mdviewQuickLook.appex`). Select a `.md` or `.markdown` file and press Space to see it rendered by the same bundled renderer as the reader window: math, highlighted code, tables, task lists, alerts, footnotes, front matter, emoji, Mermaid diagrams, local and remote images, with the same sanitized HTML subset and light/dark appearance. It works offline from its own copy of the renderer resources.
+
+`make install` registers the extension. If Space still shows plain text:
+
+```bash
+pluginkit -m -v -i com.mdview.app.quicklook   # shows the registered copy and its path
+pluginkit -a ~/Applications/mdview.app/Contents/PlugIns/mdviewQuickLook.appex
+qlmanage -r && qlmanage -r cache                # reload Quick Look
+```
+
+If it is registered but unused, enable **mdview** under **System Settings → General → Login Items & Extensions → Quick Look** (on older macOS: **Privacy & Security → Extensions → Quick Look**). Only one copy should be registered; a backup or a build directory with the same identifier can otherwise be chosen. Remove a stale one with `pluginkit -r <path to .appex>`.
+
+Limitations of the preview:
+
+- Links are inert except in-document anchors (`#heading`, footnotes); open the file in mdview to follow them. Find, zoom and the outline are not available.
+- Only the first 4 MiB of a file is previewed, with a note at the top. Files that are not UTF-8 show an error; a preview that does not finish within 10 seconds shows an error.
+- No Finder thumbnails (icons) are generated.
+- The extension runs in the App Sandbox. It may read files anywhere in your home folder and under `/Volumes` (read-only, a temporary-exception entitlement) so relative images next to the document load; images elsewhere show their alt text. Remote HTTP/HTTPS images load over the network, as in the reader.
+- Builds are ad-hoc signed: the extension works for the local user who built and registered it, not as a notarized distribution.
 
 ## Build and install
 
@@ -82,10 +104,11 @@ To make mdview the default in Finder, select a Markdown file, use **Get Info →
 ```bash
 make check            # Swift unit tests and Node renderer regression tests
 make gui-test         # Build app and run native WebKit interaction checks
-make validate-bundle  # Check bundled assets and code signature
+make validate-bundle  # Check bundled assets, the Quick Look extension and code signatures
+make quicklook-test   # Register this build's Quick Look extension and check real qlmanage previews
 ```
 
-GUI checks require an active macOS desktop. They are separate from `make check` so unit tests can run without a window session. A successful build or a living process alone is not evidence that rendering, selection, clipboard, links or reloading work.
+GUI and Quick Look checks require an active macOS desktop. `make quicklook-test` (`scripts/check-quicklook.sh [app]`) registers the checked bundle's extension with `pluginkit -a`, previews `Tests/QuickLook/fixture.md`, a truncated large file and a non-UTF-8 file with `qlmanage -p`, and asserts the statistics the extension logs after rendering; screenshots of the preview window go to `.build/quicklook-checks/`. The checked extension stays registered afterwards (copies in temporary folders are unregistered again); unregister it with `pluginkit -r <path>`. PlugInKit uses one registered copy per identifier and version, so the check removes other test copies first and stops if another copy, such as an installed app, is registered. They are separate from `make check` so unit tests can run without a window session. A successful build or a living process alone is not evidence that rendering, selection, clipboard, links or reloading work.
 
 The first renderer test run installs the lockfile-pinned jsdom development dependency with npm; subsequent runs use the installed dependency. This network setup is only needed for development tests, not for building or using the viewer. The GUI entry point uses the `python` command (Python 3).
 

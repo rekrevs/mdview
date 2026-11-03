@@ -18,8 +18,14 @@ with tempfile.TemporaryDirectory(prefix='mdview-reader-check-') as tmp:
     bundle=root/'mdview.app/Contents/Resources/mdview_mdview.bundle'
     if not bundle.exists(): raise RuntimeError('Run make bundle before the GUI checks')
     shutil.copytree(bundle, contents/'Resources'/bundle.name)
+    target=['-sdk',sdk,'-target',f'{platform.machine()}-apple-macosx13.0']
+    # Shared reader code is its own module (as in Package.swift): build it first, then link it.
+    core=Path(tmp)/'core'; core.mkdir()
+    subprocess.run(['swiftc',*target,'-parse-as-library','-module-name','ReaderCore','-emit-library','-static',
+                    '-emit-module','-emit-module-path',str(core/'ReaderCore.swiftmodule'),
+                    *map(str,sorted((root/'Sources/ReaderCore').glob('*.swift'))),'-o',str(core/'libReaderCore.a')],cwd=core,check=True)
     sources=[p for p in (root/'Sources').glob('*.swift') if p.name!='mdviewApp.swift']
-    cmd=['swiftc','-sdk',sdk,'-target',f'{platform.machine()}-apple-macosx13.0',*map(str,sources),str(accessor),str(root/'Tests/Integration/ReaderChecks.swift'),'-o',str(contents/'MacOS/ReaderChecks')]
+    cmd=['swiftc',*target,'-I',str(core),'-L',str(core),'-lReaderCore',*map(str,sources),str(accessor),str(root/'Tests/Integration/ReaderChecks.swift'),'-o',str(contents/'MacOS/ReaderChecks')]
     subprocess.run(cmd,cwd=root,check=True)
     (contents/'Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':'ReaderChecks','CFBundleIdentifier':'com.mdview.reader-checks','CFBundleName':'mdview Reader Checks','CFBundlePackageType':'APPL','NSHighResolutionCapable':True}))
     log=output/'checks.log'; errors=output/'errors.log'; log.write_text('');errors.write_text('')

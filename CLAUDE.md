@@ -10,10 +10,13 @@ Version 2 uses a SwiftUI document app with one `WKWebView` per reader window. Th
 - `Sources/ContentView.swift`: document state, per-window zoom/find and reload integration.
 - `Sources/ReaderWebView.swift`: WebKit hosting, navigation and keyboard scrolling.
 - `Sources/LinkDestination.swift`: URL classification for anchors, local files and external destinations.
+- `Sources/ReaderCore/`: library shared by app and Quick Look: `RendererPage` (resource lookup, WebKit configuration, render options), `LocalImageHandler`, `PreviewText`.
+- `Sources/QuickLook/`: Quick Look preview extension (`MDViewPreviewController`, entry via `NSExtensionMain` in `main.swift`); packaged by `bundle.sh` as `Contents/PlugIns/mdviewQuickLook.appex` with `Packaging/QuickLook.entitlements`.
 - `Sources/Resources/Web/`: offline page, renderer, author-HTML policy (`html-policy.js`), CSS, vendored libraries/fonts/licenses.
 - `Tests/mdviewTests/`: Swift regression tests.
 - `Tests/Renderer/`: Node renderer regression tests.
 - `scripts/check-reader.py`: native GUI verification entry point.
+- `scripts/check-quicklook.sh`: real Quick Look verification (`make quicklook-test`): pluginkit registration, `qlmanage -p` and the extension's logged render statistics.
 
 Rendering uses markdown-it (with markdown-it-footnote and markdown-it-emoji), KaTeX, highlight.js and Mermaid, with author HTML limited to the `html-policy.js` allowlist. `renderer.js` injects `vendor/mermaid.min.js` only for documents with a mermaid fence and runs it with `securityLevel: 'strict'`; licenses of the code bundled inside Mermaid are generated into `vendor/licenses/mermaid-bundled.txt` from `scripts/mermaid-bundled.json`. Libraries and fonts are pinned local assets; the installed reader must work without access to the source checkout or a CDN. `Package.swift` copies the complete `Resources` directory. Bundle lookup must prefer resources inside the installed app before SwiftPM's development fallback.
 
@@ -23,6 +26,7 @@ Rendering uses markdown-it (with markdown-it-footnote and markdown-it-emoji), Ka
 make build
 make check
 make gui-test
+make quicklook-test
 make release
 make validate-bundle
 ```
@@ -42,5 +46,6 @@ For rendering or interaction changes, reproduce the issue and test the actual We
 - Preserve nested Markdown content, whitespace and math environments. On unsupported input, show source or a clear error instead of dropping content.
 - Author HTML passes only through `html-policy.js`, which emits canonical allowlisted markup and never raw source; trusted renderer output uses its own token types; only bundled scripts execute (keep `script-src 'self'`); classify every link destination, including links in HTML.
 - File reload must survive inode replacement during atomic saves and close every watcher descriptor. Keep last good document content visible if a reload temporarily fails.
+- The Quick Look appex stays sandboxed and carries its own copy of the resource bundle (inside it `Bundle.main` is the appex); validate-bundle requires both copies to be identical. Sign inside-out without `--deep`: the appex with its entitlements first, then the app. pkd may drop a registration shortly after a bundle at the same path is replaced; re-check `pluginkit -m` before testing. Never register or unregister copies in `~/Applications` during development.
 - Keep SwiftPM and app-bundle resources in sync. Validate a relocated bundle with no build-tree resource fallback before declaring packaging complete.
 - Update README and dependency licenses/manifest when supported behavior or vendored libraries change.

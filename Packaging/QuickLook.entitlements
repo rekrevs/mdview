@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Quick Look loads only sandboxed preview extensions. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Remote http/https images, as in the reader window. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Quick Look grants access to the previewed file only; relative local images need
+	     read-only access next to it. Limited to the home folder and mounted volumes. -->
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+	<array>
+		<string>/</string>
+	</array>
+	<key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
+	<array>
+		<string>/Volumes/</string>
+	</array>
+</dict>
+</plist>

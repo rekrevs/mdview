@@ -17,6 +17,10 @@ if [[ ! -x "$BUILD_DIR/mdview" ]]; then
     echo "Build $configuration first: make build CONFIGURATION=$configuration" >&2
     exit 1
 fi
+if [[ ! -x "$BUILD_DIR/mdviewQuickLook" ]]; then
+    echo "Missing Quick Look extension executable; rebuild $configuration before packaging." >&2
+    exit 1
+fi
 if [[ ! -d "$BUILD_DIR/mdview_mdview.bundle" ]]; then
     echo "Missing renderer resource bundle; rebuild $configuration before packaging." >&2
     exit 1
@@ -108,8 +112,68 @@ PLIST
 # Create PkgInfo
 echo -n "APPL????" > "$APP_DIR/Contents/PkgInfo"
 
-# Sign only after all resources are in place, then verify the staged result.
-codesign --sign - --force --deep "$APP_DIR"
+# Quick Look preview extension. Inside the appex Bundle.main is the appex, so it carries
+# its own copy of the renderer resources rather than reaching into the containing app.
+app_id="$(plutil -extract CFBundleIdentifier raw "$APP_DIR/Contents/Info.plist")"
+app_version="$(plutil -extract CFBundleShortVersionString raw "$APP_DIR/Contents/Info.plist")"
+app_build="$(plutil -extract CFBundleVersion raw "$APP_DIR/Contents/Info.plist")"
+APPEX_DIR="$APP_DIR/Contents/PlugIns/mdviewQuickLook.appex"
+mkdir -p "$APPEX_DIR/Contents/MacOS" "$APPEX_DIR/Contents/Resources"
+cp "$BUILD_DIR/mdviewQuickLook" "$APPEX_DIR/Contents/MacOS/"
+ditto "$BUILD_DIR/mdview_mdview.bundle" "$APPEX_DIR/Contents/Resources/mdview_mdview.bundle"
+cat > "$APPEX_DIR/Contents/Info.plist" << PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>mdviewQuickLook</string>
+	<key>CFBundleIdentifier</key>
+	<string>$app_id.quicklook</string>
+	<key>CFBundleName</key>
+	<string>mdview Quick Look</string>
+	<key>CFBundleDisplayName</key>
+	<string>mdview</string>
+	<key>CFBundleVersion</key>
+	<string>$app_build</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$app_version</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.quicklook.preview</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>MDViewPreviewController</string>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>QLSupportedContentTypes</key>
+			<array>
+				<string>net.daringfireball.markdown</string>
+			</array>
+			<key>QLSupportsSearchableItems</key>
+			<false/>
+			<key>QLIsDataBasedPreview</key>
+			<false/>
+		</dict>
+	</dict>
+</dict>
+</plist>
+PLIST
+
+# Sign only after all resources are in place, inside-out and without --deep so the
+# extension keeps its own sandbox entitlements; then verify the staged result.
+codesign --sign - --force --entitlements "$SCRIPT_DIR/Packaging/QuickLook.entitlements" "$APPEX_DIR"
+codesign --sign - --force "$APP_DIR"
 "$SCRIPT_DIR/scripts/validate-bundle.sh" "$APP_DIR"
 # mdview.app is a generated build artifact. Stage first so failures leave it intact.
 if [[ -e "$SCRIPT_DIR/mdview.app" ]]; then

@@ -4,12 +4,13 @@ import UniformTypeIdentifiers
 
 /// Serve local image bytes to a renderer whose file access is limited to its own assets.
 /// Document text never gains arbitrary file access or a script-capable file origin.
-final class LocalImageHandler: NSObject, WKURLSchemeHandler {
+public final class LocalImageHandler: NSObject, WKURLSchemeHandler {
+    public override init() { super.init() }
     private let queue = DispatchQueue(label: "com.mdview.images", qos: .userInitiated)
     private var cancelled = Set<ObjectIdentifier>()
     private let lock = NSLock()
 
-    func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
+    public func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
         let identity = ObjectIdentifier(urlSchemeTask)
         lock.lock(); cancelled.remove(identity); lock.unlock()
         queue.async { [self] in
@@ -38,7 +39,7 @@ final class LocalImageHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
-    func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {
+    public func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {
         lock.lock(); cancelled.insert(ObjectIdentifier(urlSchemeTask)); lock.unlock()
     }
 }

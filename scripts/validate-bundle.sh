@@ -60,5 +60,56 @@ if [[ -n "$(find "$app/Contents/Resources" -type l -print -quit)" ]]; then
     exit 1
 fi
 plutil -lint "$app/Contents/Info.plist"
+
+# Quick Look preview extension: its own identical resource copy, extension keys,
+# sandbox entitlement and an Objective-C principal class that NSExtensionMain can find.
+appex="$app/Contents/PlugIns/mdviewQuickLook.appex"
+appex_plist="$appex/Contents/Info.plist"
+appex_bundle="$appex/Contents/Resources/mdview_mdview.bundle"
+for required in "$appex/Contents/MacOS/mdviewQuickLook" "$appex_plist" "$appex_bundle"; do
+    if [[ ! -e "$required" ]]; then
+        echo "Quick Look extension is missing: $required" >&2
+        exit 1
+    fi
+done
+[[ -x "$appex/Contents/MacOS/mdviewQuickLook" ]]
+if ! diff -rq "$bundle" "$appex_bundle"; then
+    echo "Quick Look extension resources differ from the app resources." >&2
+    exit 1
+fi
+if [[ -n "$(find "$appex/Contents/Resources" -type l -print -quit)" ]]; then
+    echo "Quick Look extension resources must be copied files, not links." >&2
+    exit 1
+fi
+plutil -lint "$appex_plist"
+plist_value() { plutil -extract "$1" raw "$appex_plist" 2>/dev/null || true; }
+app_id="$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")"
+expect() {
+    if [[ "$(plist_value "$1")" != "$2" ]]; then
+        echo "Quick Look Info.plist $1 is '$(plist_value "$1")', expected '$2'." >&2
+        exit 1
+    fi
+}
+expect CFBundleIdentifier "$app_id.quicklook"
+expect CFBundlePackageType 'XPC!'
+expect CFBundleExecutable mdviewQuickLook
+expect CFBundleShortVersionString "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")"
+expect CFBundleVersion "$(plutil -extract CFBundleVersion raw "$app/Contents/Info.plist")"
+expect NSExtension.NSExtensionPointIdentifier com.apple.quicklook.preview
+expect NSExtension.NSExtensionPrincipalClass MDViewPreviewController
+expect NSExtension.NSExtensionAttributes.QLIsDataBasedPreview false
+expect NSExtension.NSExtensionAttributes.QLSupportedContentTypes.0 net.daringfireball.markdown
+if ! nm "$appex/Contents/MacOS/mdviewQuickLook" | grep -q '_OBJC_CLASS_$_MDViewPreviewController$'; then
+    echo "Quick Look extension lacks the MDViewPreviewController principal class." >&2
+    exit 1
+fi
+entitlements="$(codesign -d --entitlements - --xml "$appex" 2>/dev/null)"
+for key in com.apple.security.app-sandbox com.apple.security.network.client; do
+    if ! grep -q "<key>$key</key><true/>" <<< "$entitlements"; then
+        echo "Quick Look extension signature lacks the $key entitlement." >&2
+        exit 1
+    fi
+done
+codesign --verify --strict "$appex"
 codesign --verify --deep --strict "$app"
 echo "Validated self-contained app layout: $app"

@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import WebKit
+import ReaderCore
 
 struct DocumentHeading: Identifiable, Equatable {
     let id: String
@@ -49,10 +50,8 @@ final class ReaderController: NSObject, ObservableObject, WKNavigationDelegate, 
 
     func makeWebView() -> WKWebView {
         if let webView { return webView }
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .nonPersistent()
-        config.setURLSchemeHandler(LocalImageHandler(), forURLScheme: "mdview-image")
-        config.userContentController.add(WeakReaderHandler(self), name: "reader")
+        let config = RendererPage.makeConfiguration()
+        config.userContentController.add(WeakReaderHandler(self), name: RendererPage.messageHandlerName)
         let view = DocumentWebView(frame: .zero, configuration: config)
         view.navigationDelegate = self
         view.allowsBackForwardNavigationGestures = false
@@ -111,9 +110,8 @@ final class ReaderController: NSObject, ObservableObject, WKNavigationDelegate, 
         guard ready, let view = webView else { return }
         renderGeneration += 1
         let generation = renderGeneration
-        let options: [String: Any] = ["baseURL": fileURL?.deletingLastPathComponent().absoluteString ?? "",
-                                      "documentURL": fileURL?.absoluteString ?? ""]
-        view.callAsyncJavaScript("return await window.mdview.render(markdown, options)", arguments: ["markdown": markdown, "options": options], in: nil, in: .page) { [weak self] result in
+        let options = RendererPage.renderOptions(for: fileURL)
+        view.callAsyncJavaScript(RendererPage.renderScript, arguments: ["markdown": markdown, "options": options], in: nil, in: .page) { [weak self] result in
             guard let self, self.renderGeneration == generation else { return }
             if case .failure(let error) = result {
                 self.isLoading = false

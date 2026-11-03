@@ -1,7 +1,7 @@
 CONFIGURATION ?= debug
 INSTALL_DIR ?= $(HOME)/Applications
 
-.PHONY: build release bundle install test check test-swift test-renderer gui-test validate-bundle clean
+.PHONY: build release bundle install test check test-swift test-renderer gui-test quicklook-test validate-bundle clean
 
 build:
 	./scripts/swift-tool.sh build -c $(CONFIGURATION)
@@ -31,6 +31,9 @@ Tests/Renderer/node_modules/jsdom/package.json: Tests/Renderer/package.json Test
 
 gui-test: bundle
 	python scripts/check-reader.py
+
+quicklook-test: bundle
+	./scripts/check-quicklook.sh mdview.app
 
 validate-bundle:
 	./scripts/validate-bundle.sh mdview.app
