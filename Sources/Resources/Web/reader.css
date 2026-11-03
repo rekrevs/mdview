@@ -20,6 +20,8 @@ pre code { padding:0; border:0; font-size:1em; white-space:pre; background:trans
 .code-block:hover .copy-code,.copy-code:focus-visible { opacity:1; }
 table { border-spacing:0; border-collapse:collapse; display:block; overflow:auto; max-width:100%; font-variant-numeric:tabular-nums; }
 th,td { border:1px solid var(--border); padding:.4em .8em; } th { font-weight:600; } tr:nth-child(2n) { background:var(--subtle); }
+.front-matter { font-size:.875em; } .front-matter th { text-align:left; white-space:nowrap; } .front-matter td { vertical-align:top; } .front-matter table { margin:0; font-size:1em; }
+.front-matter-source::before { content:"Front matter"; display:block; font-size:.75em; color:var(--muted); margin-bottom:.25em; }
 img { max-width:100%; height:auto; } .image-error { display:inline-block; color:var(--muted); border:1px dashed var(--border); padding:.5em; font-size:.9em; }
 hr { border:0; height:1px; background:var(--border); margin:1.5rem 0; }
 .math-inline { white-space:nowrap; } .math-display { overflow-x:auto; overflow-y:hidden; margin:1.2rem 0; padding:.2rem 0; } .katex-display { margin:.3em 0; } .math-error { color:#c74646; white-space:pre-wrap; font-family:ui-monospace,monospace; }

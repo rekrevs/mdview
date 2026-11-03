@@ -98,6 +98,76 @@
   };
   md.renderer.rules.code_block = (tokens, index) => codeHTML(tokens[index].content, '');
 
+  // Leading front matter. A deliberately small YAML subset (flat keys, scalars and
+  // scalar lists) becomes a GitHub-style table; anything else stays visible as source.
+  md.core.ruler.after('normalize', 'strip_bom', state => { state.src = state.src.replace(/^\uFEFF/, ''); });
+  md.block.ruler.before('table', 'front_matter', (state, startLine, endLine, silent) => {
+    if (startLine !== 0 || state.parentType !== 'root' || state.bMarks[0] !== 0) return false;
+    const line = number => state.src.slice(state.bMarks[number], state.eMarks[number]);
+    const open = /^(---|\+\+\+)[ \t]*$/.exec(line(0));
+    if (!open) return false;
+    const kind = open[1] === '+++' ? 'toml' : 'yaml';
+    const closer = kind === 'toml' ? /^\+\+\+[ \t]*$/ : /^(---|\.\.\.)[ \t]*$/;
+    let close = 1;
+    while (close < endLine && !closer.test(line(close))) close++;
+    if (close >= endLine) return false;
+    if (silent) return true;
+    const token = state.push('front_matter', '', 0);
+    token.block = true; token.content = state.getLines(1, close, 0, false);
+    token.meta = { kind }; token.map = [0, close + 1];
+    state.line = close + 1;
+    return true;
+  });
+  function frontMatterScalar(text) {
+    text = text.trim();
+    let match;
+    if (text.startsWith('"')) return (match = /^"([^"\\]*)"\s*(?:#.*)?$/.exec(text)) ? match[1] : null;
+    if (text.startsWith("'")) return (match = /^'((?:[^']|'')*)'\s*(?:#.*)?$/.exec(text)) ? match[1].replace(/''/g, "'") : null;
+    text = text.replace(/(^|\s+)#.*$/, '').trim();
+    if (/^[&*!{}[\]|>%@`,]/.test(text) || /:(\s|$)/.test(text)) return null;
+    return text;
+  }
+  function parseFrontMatter(content) {
+    const lines = content.replace(/\n$/, '').split('\n'), pairs = [], keys = new Set();
+    for (let i = 0; i < lines.length; i++) {
+      const text = lines[i];
+      if (!text.trim() || /^\s*#/.test(text)) continue;
+      const match = /^(?:"([^"\\]*)"|'((?:[^']|'')*)'|([^\s:#'"&*!{}[\]|>%@`,-][^:]*?))[ \t]*:(?:[ \t]+(.*?))?[ \t]*$/.exec(text);
+      if (!match) return null;
+      const key = match[1] ?? (match[2] !== undefined ? match[2].replace(/''/g, "'") : match[3]);
+      if (keys.has(key)) return null;
+      keys.add(key);
+      const raw = match[4] ?? '';
+      let value;
+      if (/^(#.*)?$/.test(raw)) {
+        value = ''; let indent = null;
+        while (i + 1 < lines.length) {
+          const item = /^([ ]*)-(?:[ \t]+(.*))?$/.exec(lines[i + 1]);
+          if (!item) { if (!lines[i + 1].trim()) { i++; continue; } break; }
+          if (indent === null) { indent = item[1]; value = []; } else if (item[1] !== indent) return null;
+          const scalar = frontMatterScalar(item[2] ?? '');
+          if (scalar === null) return null;
+          value.push(scalar); i++;
+        }
+      } else if (raw.startsWith('[')) {
+        const list = /^\[([^[\]{}"']*)\]\s*(?:#.*)?$/.exec(raw);
+        if (!list) return null;
+        value = list[1].trim() ? list[1].split(',').map(frontMatterScalar) : [];
+        if (value.some(item => item === null)) return null;
+      } else if ((value = frontMatterScalar(raw)) === null) return null;
+      pairs.push([key, value]);
+    }
+    return pairs.length ? pairs : null;
+  }
+  md.renderer.rules.front_matter = (tokens, index) => {
+    const { content, meta } = tokens[index];
+    if (!content.trim()) return '';
+    const pairs = meta.kind === 'yaml' ? parseFrontMatter(content) : null;
+    if (!pairs) return `<div class="front-matter-source">${codeHTML(content, meta.kind).trim()}</div>\n`;
+    const cell = value => Array.isArray(value) ? `<table><tbody><tr>${value.map(item => `<td>${escape(item)}</td>`).join('')}</tr></tbody></table>` : escape(value);
+    return `<table class="front-matter"><thead><tr>${pairs.map(([key]) => `<th>${escape(key)}</th>`).join('')}</tr></thead><tbody><tr>${pairs.map(([, value]) => `<td>${cell(value)}</td>`).join('')}</tr></tbody></table>\n`;
+  };
+
   md.core.ruler.after('inline', 'reader_metadata', state => {
     const used = new Set();
     state.env.headings = [];

@@ -244,6 +244,16 @@ final class Checks: NSObject, NSApplicationDelegate {
         check(try await bool(reader,"window.scrollY>10000"),"Cmd+Down reading key reaches document end")
         reader.updateMarkdown(big+"\n\nLast update"); await delay(0.3)
         check(try await bool(reader,"window.scrollY>10000"),"reload retains reading position")
+        reader.updateMarkdown("---\ntitle: GUI front matter\ntags: [one, two]\n---\n\n# After front matter\n\nBody $x^2$")
+        try await until("front matter table") { try await self.bool(reader,"document.querySelector('main').firstElementChild?.matches('table.front-matter')===true") }
+        await delay(0.2)
+        check(try await bool(reader,"!document.querySelector('main hr') && document.querySelector('table.front-matter').getBoundingClientRect().height>0 && document.querySelectorAll('.front-matter td td').length===2"),"front matter renders as a visible metadata table instead of a rule")
+        check(reader.headings.map(\.title)==["After front matter"],"front matter keys stay out of the native outline")
+        _ = try await js(reader,"(()=>{const range=document.createRange();range.selectNodeContents(document.querySelector('main'));const s=getSelection();s.removeAllRanges();s.addRange(range);})()")
+        let frontCopy=await copy(reader)
+        check(frontCopy.contains("GUI front matter") && frontCopy.contains("$x^2$"),"native Copy includes front matter values and body")
+        _ = try await js(reader,"getSelection().removeAllRanges()")
+        try await snapshot(reader,"front-matter")
         reader.updateMarkdown("Bad formula: $\\notARealCommand{x}$\n\n<script>window.injected=true</script>\n\n[javascript](javascript:alert(1))")
         try await until("invalid formula fallback") { try await self.bool(reader,"document.querySelector('.math-error')!==null") }
         check(try await bool(reader,"!window.injected && !document.querySelector('main script') && !document.querySelector('a[href^=javascript]')"),"document scripts and unsafe link schemes cannot execute")

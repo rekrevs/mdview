@@ -197,3 +197,52 @@ test('copying a numbered-list excerpt keeps its original starting number', () =>
   assert.equal(new JSDOM(clipboard(r)['text/html']).window.document.querySelector('ol').start, 0);
   r.close();
 });
+test('leading YAML front matter renders as a GitHub-style metadata table outside the outline', () => {
+  const r = reader();
+  r.render('---\ntitle: Hello\ntags: [a, b]\nauthors:\n  - Ada\n  - Bob\ndraft: true\n---\n\n# Body\n\nText $x^2$');
+  const table = r.root.firstElementChild;
+  assert.equal(table.tagName, 'TABLE'); assert.ok(table.classList.contains('front-matter'));
+  assert.deepEqual(Array.from(table.querySelectorAll(':scope > thead th'), n => n.textContent), ['title', 'tags', 'authors', 'draft']);
+  const cells = table.querySelectorAll(':scope > tbody > tr > td');
+  assert.equal(cells[0].textContent, 'Hello');
+  assert.deepEqual(Array.from(cells[1].querySelectorAll('td'), n => n.textContent), ['a', 'b']);
+  assert.deepEqual(Array.from(cells[2].querySelectorAll('td'), n => n.textContent), ['Ada', 'Bob']);
+  assert.equal(cells[3].textContent, 'true');
+  assert.equal(r.root.querySelectorAll('hr').length, 0);
+  assert.deepEqual(Array.from(r.messages.find(m => m.type === 'headings').headings, h => h.title), ['Body']);
+  assert.equal(r.root.querySelectorAll('[data-math]').length, 1);
+  const data = clipboard(r);
+  assert.match(data['text/plain'], /title/); assert.match(data['text/plain'], /Hello/);
+  assert.ok(!/class=/.test(data['text/html']));
+  assert.equal(r.window.mdview.find('Hello').count, 1); r.close();
+});
+test('front matter tolerates BOM and CRLF and ignores non-leading or unclosed rules', () => {
+  const r = reader();
+  r.render('\uFEFF---\r\ntitle: Win\r\n---\r\nBody');
+  assert.ok(r.root.querySelector('table.front-matter')); assert.ok(!r.root.textContent.includes('\uFEFF'));
+  for (const text of ['\n---\na: b\n---\n', 'Intro\n\n---\na: b\n---\n', '---\na: b\n\nno close', '> ---\n> a: b\n\n---\n', '----\na: b\n----\n']) {
+    r.render(text);
+    assert.equal(r.root.querySelectorAll('.front-matter,.front-matter-source').length, 0, JSON.stringify(text));
+  }
+  r.render('---\na: b\n---\nTitle\n---\n\nText\n\n---\n\nEnd');
+  assert.equal(r.root.querySelectorAll('table.front-matter').length, 1);
+  assert.equal(r.root.querySelector('h2').textContent, 'Title'); assert.equal(r.root.querySelectorAll('hr').length, 1);
+  r.render('---\n---\nBody'); assert.equal(r.root.innerHTML.trim(), '<p>Body</p>');
+  r.render('---\nonly: front\n...'); assert.equal(r.root.children.length, 1); assert.ok(r.root.querySelector('table.front-matter'));
+  r.close();
+});
+test('unsupported front matter stays visible as highlighted source and values stay inert', () => {
+  const r = reader();
+  for (const yaml of ['a:\n  b: c', 'a: |\n  text', 'a: &x 1\nb: *x', 'a: !!binary aGk=', 'a: !js/function x', 'a: "open', 'a: 1\na: 2', '- a\n- b']) {
+    r.render(`---\n${yaml}\n---\nBody`);
+    const code = r.root.querySelector('.front-matter-source code.language-yaml');
+    assert.ok(code, yaml); assert.equal(code.textContent, yaml, yaml);
+    assert.equal(r.root.querySelectorAll('table').length, 0, yaml);
+  }
+  r.render('---\nmath: $x^2$\nhtml: <script>window.evil=1</script>\nurl: http://x:80/a\ntime: 12:30\nbold: a **b**\nq: "x # y"\n---\n');
+  assert.equal(r.root.querySelectorAll('[data-math],a,script,strong').length, 0);
+  assert.equal(r.window.evil, undefined);
+  assert.deepEqual(Array.from(r.root.querySelectorAll('td'), n => n.textContent), ['$x^2$', '<script>window.evil=1</script>', 'http://x:80/a', '12:30', 'a **b**', 'x # y']);
+  r.render('+++\ntitle = "T"\n+++\nBody');
+  assert.ok(r.root.querySelector('.front-matter-source code.language-toml')); r.close();
+});

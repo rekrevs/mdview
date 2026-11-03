@@ -124,7 +124,7 @@
     {
       "id": "T-0023",
       "size": "M",
-      "status": "READY",
+      "status": "DONE",
       "summary": "Show YAML front matter as metadata"
     },
     {
