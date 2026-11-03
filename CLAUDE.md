@@ -15,7 +15,7 @@ Version 2 uses a SwiftUI document app with one `WKWebView` per reader window. Th
 - `Tests/Renderer/`: Node renderer regression tests.
 - `scripts/check-reader.py`: native GUI verification entry point.
 
-Rendering uses markdown-it, KaTeX, highlight.js and Mermaid, with author HTML limited to the `html-policy.js` allowlist. `renderer.js` injects `vendor/mermaid.min.js` only for documents with a mermaid fence and runs it with `securityLevel: 'strict'`; licenses of the code bundled inside Mermaid are generated into `vendor/licenses/mermaid-bundled.txt` from `scripts/mermaid-bundled.json`. Libraries and fonts are pinned local assets; the installed reader must work without access to the source checkout or a CDN. `Package.swift` copies the complete `Resources` directory. Bundle lookup must prefer resources inside the installed app before SwiftPM's development fallback.
+Rendering uses markdown-it (with markdown-it-footnote and markdown-it-emoji), KaTeX, highlight.js and Mermaid, with author HTML limited to the `html-policy.js` allowlist. `renderer.js` injects `vendor/mermaid.min.js` only for documents with a mermaid fence and runs it with `securityLevel: 'strict'`; licenses of the code bundled inside Mermaid are generated into `vendor/licenses/mermaid-bundled.txt` from `scripts/mermaid-bundled.json`. Libraries and fonts are pinned local assets; the installed reader must work without access to the source checkout or a CDN. `Package.swift` copies the complete `Resources` directory. Bundle lookup must prefer resources inside the installed app before SwiftPM's development fallback.
 
 ## Build and verification
 

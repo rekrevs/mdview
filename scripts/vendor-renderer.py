@@ -29,6 +29,8 @@ PACKAGES = [
     ('@primer/octicons', '19.42.0', 'primer-octicons-19.42.0.tgz', 'MIT', {f'build/svg/{icon}-16.svg': f'octicons/{icon}-16.svg' for icon in ('info', 'light-bulb', 'report', 'alert', 'stop')}),
     # Self-contained IIFE build (no lazy chunks); loaded only for documents with mermaid fences.
     ('mermaid', '12.2.0', 'mermaid-12.2.0.tgz', 'MIT', {'dist/mermaid.min.js': 'mermaid.min.js'}),
+    # GitHub emoji shortcodes (data derived from GitHub's gemoji, MIT); global markdownitEmoji is the full plugin.
+    ('markdown-it-emoji', '3.1.0', 'markdown-it-emoji-3.1.0.tgz', 'MIT', {'dist/markdown-it-emoji.min.js': 'markdown-it-emoji.min.js'}),
 ]
 
 

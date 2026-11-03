@@ -15,7 +15,7 @@ function reader(options = {}) {
   window.matchMedia = query => query === '(prefers-color-scheme: dark)' ? scheme : { matches: false, addEventListener() {} };
   window.setDark = dark => { scheme.matches = dark; scheme.listeners.forEach(listener => listener({ matches: dark })); };
   window.HTMLElement.prototype.scrollIntoView = () => {};
-  for (const file of ['vendor/markdown-it.min.js', 'vendor/markdown-it-footnote.min.js', 'vendor/katex.min.js', 'vendor/highlight.min.js', 'html-policy.js', 'renderer.js']) window.eval(fs.readFileSync(path.join(web, file), 'utf8'));
+  for (const file of ['vendor/markdown-it.min.js', 'vendor/markdown-it-footnote.min.js', 'vendor/markdown-it-emoji.min.js', 'vendor/katex.min.js', 'vendor/highlight.min.js', 'html-policy.js', 'renderer.js']) window.eval(fs.readFileSync(path.join(web, file), 'utf8'));
   const root = window.document.getElementById('document');
   return { window, root, messages, render: (text, options = {}) => window.mdview.render(text, options), close: () => window.close() };
 }
@@ -848,4 +848,100 @@ test('the vendored Mermaid bundle loads as a classic script and parses valid and
   assert.equal((await window.mermaid.parse('sequenceDiagram\n  A->>B: hi')).diagramType, 'sequence');
   await assert.rejects(window.mermaid.parse('graph TD\n  A-->'), /Parse error/);
   window.close();
+});
+
+// Emoji shortcodes and appearance-tagged images (T-0025).
+const emojiCount = node => (node.textContent.match(/\p{Extended_Pictographic}/gu) || []).length;
+test('known GitHub emoji shortcodes render as Unicode emoji; emoticons and unknown names stay text', () => {
+  const r = reader();
+  r.render(':rocket: :+1: :-1: :white_check_mark: :100: :tada:');
+  assert.equal(r.root.querySelector('p').textContent, '🚀 👍 👎 ✅ 💯 🎉');
+  const literal = [':unknown_code:', ':octocat:', ':shipit:', '10:30:45', 'a:zz:c', ':) :D :$ ;) <3 :-)'];
+  for (const text of literal) { r.render(text); assert.equal(r.root.textContent.trim(), text, text); }
+  r.render('\\:rocket: and :rocket\\:'); assert.equal(r.root.textContent.trim(), ':rocket: and :rocket:');
+  r.render('Shortcodes need no word boundary, as on GitHub: a:tada:b'); assert.ok(r.root.textContent.includes('a🎉b'));
+  r.close();
+});
+test('emoji leave code, math, link destinations, autolinks, front matter, diagrams and alert titles untouched', () => {
+  const r = reader();
+  r.render('---\ntitle: ":rocket: launch"\n---\n\n`:rocket:` and $:rocket:$\n\n```\n:rocket:\n```\n\n    :tada: indented\n\nSee https://example.com/:tada:/x and <https://example.com/:tada:> and [x :tada:](https://example.com/:tada:)\n\n> [!NOTE]\n> Body :tada:\n\n```mermaid\ngraph TD\n  A[:tada:] --> B\n```');
+  assert.equal(r.root.querySelector('table.front-matter td').textContent, ':rocket: launch');
+  assert.equal(r.root.querySelector('p > code').textContent, ':rocket:');
+  assert.equal(r.root.querySelector('[data-math]').dataset.math, '$:rocket:$');
+  assert.deepEqual(Array.from(r.root.querySelectorAll('pre > code'), n => n.textContent), [':rocket:\n', ':tada: indented\n', 'graph TD\n  A[:tada:] --> B\n']);
+  const links = Array.from(r.root.querySelectorAll('a'), a => [a.getAttribute('href'), a.textContent]);
+  assert.deepEqual(links, [['https://example.com/:tada:/x', 'https://example.com/:tada:/x'], ['https://example.com/:tada:', 'https://example.com/:tada:'], ['https://example.com/:tada:', 'x 🎉']]);
+  assert.equal(r.root.querySelector('.markdown-alert-title').textContent, 'Note');
+  assert.equal(r.root.querySelector('.markdown-alert p:not(.markdown-alert-title)').textContent, 'Body 🎉');
+  r.render('![:rocket: alt](a.png)'); assert.equal(r.root.querySelector('img').alt, ':rocket: alt');
+  r.close();
+});
+test('emoji in author HTML text follow GitHub: converted in text, not inside code, pre or tt', () => {
+  const r = reader();
+  r.render('Press <kbd>:rocket:</kbd> or <code>:tada:</code> <tt>:tada:</tt> then :tada:\n\n<p align="center">:rocket: Project</p>\n\n<pre>\n:rocket:\n</pre>\n\n<div>\n<code>:tada:</code> :100:\n</div>');
+  assert.equal(r.root.querySelector('kbd').textContent, '🚀');
+  assert.equal(r.root.querySelector('p > code').textContent, ':tada:');
+  assert.equal(r.root.querySelector('tt').textContent, ':tada:');
+  assert.ok(r.root.querySelector('p').textContent.endsWith('then 🎉'));
+  assert.equal(r.root.querySelector('p[align="center"]').textContent, '🚀 Project');
+  assert.equal(r.root.querySelector('pre').textContent, ':rocket:\n');
+  assert.equal(r.root.querySelector('div').textContent.trim(), ':tada: 💯');
+  assertInert(r, 'emoji html'); r.close();
+});
+test('emoji headings keep the shortcode in the id and show the emoji in the outline; task lists still work', () => {
+  const r = reader();
+  r.render('# :rocket: Launch\n\n## Done :white_check_mark:\n\n- [x] :rocket: shipped\n- [ ] :tada: party');
+  const headings = r.messages.find(m => m.type === 'headings').headings;
+  assert.deepEqual(Array.from(headings, h => [h.id, h.title]), [['rocket-launch', '🚀 Launch'], ['done-white_check_mark', 'Done ✅']]);
+  assert.equal(r.root.querySelector('h1').id, 'rocket-launch'); assert.equal(r.root.querySelector('h1').textContent, '🚀 Launch');
+  const boxes = r.root.querySelectorAll('li.task-list-item input.task-checkbox');
+  assert.equal(boxes.length, 2); assert.equal(boxes[0].checked, true);
+  assert.deepEqual(Array.from(r.root.querySelectorAll('li'), li => li.textContent.trim()), ['🚀 shipped', '🎉 party']);
+  r.close();
+});
+test('copy and find see the rendered emoji, not the shortcode', () => {
+  const r = reader();
+  r.render('Launch :rocket: now.\n\n`:rocket:` stays code.');
+  const copied = clipboard(r);
+  assert.equal(copied['text/plain'], 'Launch 🚀 now.\n\n:rocket: stays code.');
+  assert.ok(copied['text/html'].includes('Launch 🚀 now.'));
+  const found = r.window.mdview.find('🚀', 1, true);
+  assert.equal(found.count, 1); assert.equal(r.window.mdview.find(':rocket:', 1, true).count, 1);
+  r.close();
+});
+test('#gh-dark-mode-only and #gh-light-mode-only tag Markdown and HTML images and their fallbacks', () => {
+  const r = reader();
+  r.render('![Light](logo-light.png#gh-light-mode-only) ![Dark](logo-dark.png#gh-dark-mode-only) ![Other](x.png#gh-dark-mode-only-x) ![Remote](https://example.org/d.png#gh-dark-mode-only)\n\n<img src="html-dark.png#gh-dark-mode-only" alt="HTML dark"> <img src="html-light.png#gh-light-mode-only" alt="HTML light">', { baseURL: 'file:///tmp/docs/' });
+  const images = Array.from(r.root.querySelectorAll('img'));
+  assert.deepEqual(images.map(img => img.className), ['gh-light-mode-only', 'gh-dark-mode-only', '', 'gh-dark-mode-only', 'gh-dark-mode-only', 'gh-light-mode-only']);
+  assert.equal(images[0].src, 'mdview-image://local/tmp/docs/logo-light.png');
+  assert.equal(images[4].src, 'mdview-image://local/tmp/docs/html-dark.png');
+  assert.equal(images[3].src, 'https://example.org/d.png#gh-dark-mode-only');
+  images[1].dispatchEvent(new r.window.Event('error'));
+  const fallback = r.root.querySelector('.image-error');
+  assert.ok(fallback.classList.contains('gh-dark-mode-only')); assert.match(fallback.textContent, /Dark/);
+  r.render('![Broken](ftp://example.org/x.png#gh-light-mode-only)');
+  assert.equal(r.root.querySelector('.image-error').className, 'image-error gh-light-mode-only');
+  assertInert(r, 'variants'); r.close();
+});
+test('reader CSS hides the inactive variant by appearance', () => {
+  const css = fs.readFileSync(path.join(web, 'reader.css'), 'utf8').replace(/\s+/g, ' ');
+  assert.ok(css.includes('@media not all and (prefers-color-scheme: dark) { .gh-dark-mode-only { display:none !important; } }'), 'light hides dark variant');
+  assert.ok(css.includes('@media (prefers-color-scheme: dark) { .gh-light-mode-only { display:none !important; } }'), 'dark hides light variant');
+});
+test('copy and find include only the variant visible in the current appearance', () => {
+  for (const dark of [false, true]) {
+    const r = reader({ dark });
+    r.render('Logo: ![Light logo](l.png#gh-light-mode-only)![Dark logo](d.png#gh-dark-mode-only) end.\n\n![Broken light](ftp://example.org/x.png#gh-light-mode-only) ![Broken dark](ftp://example.org/x.png#gh-dark-mode-only)');
+    const copied = clipboard(r), want = dark ? 'Dark' : 'Light', not = dark ? 'Light' : 'Dark';
+    assert.ok(copied['text/plain'].startsWith(`Logo: ${want} logo end.`), copied['text/plain']);
+    assert.ok(copied['text/plain'].includes(`Broken ${want.toLowerCase()}`));
+    for (const format of ['text/plain', 'text/html']) assert.ok(!copied[format].includes(`${not} logo`) && !copied[format].includes(`Broken ${not.toLowerCase()}`), `${format}: ${copied[format]}`);
+    assert.equal(r.window.mdview.find(`Broken ${not.toLowerCase()}`, 1, true).count, 0);
+    assert.equal(r.window.mdview.find(`Broken ${want.toLowerCase()}`, 1, true).count, 1);
+    // The same nodes answer to an appearance switch without a re-render.
+    r.window.setDark(!dark);
+    assert.ok(clipboard(r)['text/plain'].includes(`${not} logo`));
+    r.close();
+  }
 });

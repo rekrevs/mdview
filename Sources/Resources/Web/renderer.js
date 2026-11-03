@@ -255,8 +255,34 @@
     return ` <a href="#${escape(encodeURIComponent(ids.ref))}" class="footnote-backref" data-footnote-backref aria-label="Back to reference ${reference}">↩︎${subId > 0 ? `<sup>${subId + 1}</sup>` : ''}</a>`;
   };
 
-  // Runs after footnote_tail so unused definitions never reach the outline.
-  md.core.ruler.after('footnote_tail', 'reader_metadata', state => {
+  // GitHub emoji shortcodes (markdown-it-emoji, gemoji names). Only text tokens outside links
+  // change, after linkify, so code, math, URLs, front matter and diagrams keep shortcodes.
+  // Emoticon shortcuts such as :) or :$ are not GitHub syntax (and :$ would clash with math).
+  const emojiOptions = { shortcuts: {} };
+  md.use(window.markdownitEmoji, emojiOptions);
+  // Inline author <code>, <pre> and <tt> keep shortcodes literal, as on GitHub.
+  md.core.ruler.after('emoji', 'emoji_literal_code', state => {
+    for (const block of state.tokens) {
+      if (block.type !== 'inline' || !block.children) continue;
+      let literal = 0;
+      block.children.forEach((child, index) => {
+        if (child.type === 'html_inline') {
+          const match = /^<(\/?)(code|pre|tt)(?=[\s/>])/i.exec(child.content);
+          if (match && !/\/>$/.test(child.content)) literal = Math.max(0, literal + (match[1] ? -1 : 1));
+        } else if (literal && child.type === 'emoji') {
+          const text = new state.Token('text', '', 0);
+          text.content = `:${child.markup}:`; block.children[index] = text;
+        }
+      });
+    }
+  });
+  // HTML block text never becomes inline tokens; the policy converts it with this instance.
+  const emojiText = window.markdownit('zero').use(window.markdownitEmoji, emojiOptions);
+  const emojify = text => text.includes(':') ? (emojiText.parseInline(text, {})[0]?.children || []).map(token => token.content).join('') : text;
+
+  // Runs after footnote_tail (unused definitions never reach the outline) and after emoji,
+  // so heading ids keep the shortcode name (GitHub: "# :rocket: Launch" -> #rocket-launch).
+  md.core.ruler.after('emoji_literal_code', 'reader_metadata', state => {
     const used = new Set(['footnote-label']);
     for (const item of state.env.footnotes?.list || []) {
       if (item.label === undefined) continue;
@@ -269,8 +295,9 @@
       const token = state.tokens[i];
       if (token.type === 'heading_open') {
         const inline = state.tokens[i + 1];
-        const title = (inline.children || []).filter(t => !['html_inline', 'link_open', 'link_close'].includes(t.type)).map(t => t.type === 'image' ? t.content : t.content || '').join('');
-        const slug = title.toLowerCase().replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '').replace(/\s/g, '-') || 'section';
+        const parts = (inline.children || []).filter(t => !['html_inline', 'link_open', 'link_close'].includes(t.type));
+        const title = parts.map(t => t.content || '').join('');
+        const slug = parts.map(t => t.type === 'emoji' ? t.markup : t.content || '').join('').toLowerCase().replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '').replace(/\s/g, '-') || 'section';
         // Remember the last suffix per slug so many identical headings stay linear.
         let id = slug, suffix = suffixes.get(slug) || 0;
         while (used.has(id)) id = `${slug}-${++suffix}`;
@@ -297,7 +324,7 @@
   };
 
   // Last core rule: canonicalizes author HTML; html_block/html_inline renderers always escape.
-  const htmlPolicy = window.installHTMLPolicy(md);
+  const htmlPolicy = window.installHTMLPolicy(md, { blockText: emojify });
 
   function imageURL(source, baseURL) {
     try {
@@ -308,14 +335,22 @@
     return '';
   }
 
+  // GitHub appearance variants: reader.css hides the inactive one; copy and find skip it.
+  const VARIANT = /#gh-(dark|light)-mode-only$/;
+  const prefersDark = () => !!window.matchMedia?.('(prefers-color-scheme: dark)')?.matches;
+  const inactiveVariant = () => prefersDark() ? '.gh-light-mode-only' : '.gh-dark-mode-only';
   function imageFallback(img) {
     const fallback = document.createElement('span'); fallback.className = 'image-error';
+    for (const name of ['gh-dark-mode-only', 'gh-light-mode-only']) if (img.classList.contains(name)) fallback.classList.add(name);
     fallback.textContent = img.alt ? `Image unavailable: ${img.alt}` : 'Image unavailable';
     return fallback;
   }
   // Every rendered image (Markdown or allowed HTML) is resolved here, inside the inert template.
   function prepareImage(img, baseURL) {
     const source = img.getAttribute('src');
+    // Author HTML cannot carry class, so only this renderer tags variants (Markdown and HTML).
+    const variant = source && VARIANT.exec(source);
+    if (variant) img.classList.add(`gh-${variant[1]}-mode-only`);
     const resolved = source ? imageURL(source, baseURL) : '';
     if (!resolved) { img.replaceWith(imageFallback(img)); return; }
     img.referrerPolicy = 'no-referrer';
@@ -539,7 +574,7 @@
   }
 
   function indexText() {
-    let text = ''; const segments = [];
+    let text = ''; const segments = [], hidden = inactiveVariant();
     const blocks = new Set(['P', 'DIV', 'PRE', 'LI', 'BLOCKQUOTE', 'TR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DETAILS', 'SUMMARY', 'DL', 'DT', 'DD', 'FIGURE', 'FIGCAPTION', 'CAPTION']);
     function visit(node) {
       if (node.nodeType === Node.TEXT_NODE) {
@@ -547,7 +582,7 @@
       }
       if (node.nodeType !== Node.ELEMENT_NODE) return;
       // Formula internals, diagram labels and diagram source are never find matches.
-      if (node.matches('button,input,[data-math],[data-mermaid],.sr-only')) { text += '\n'; return; }
+      if (node.matches(`button,input,[data-math],[data-mermaid],.sr-only,${hidden}`)) { text += '\n'; return; }
       const block = blocks.has(node.tagName);
       if (block && text && !text.endsWith('\n')) text += '\n';
       for (const child of node.childNodes) visit(child);
@@ -651,6 +686,7 @@
     });
     holder.querySelectorAll('[data-math]').forEach(node => node.replaceWith(document.createTextNode(node.classList.contains('math-display') ? '\n\n' + node.dataset.math + '\n\n' : node.dataset.math)));
     holder.querySelectorAll('input[type="checkbox"]').forEach(node => node.replaceWith(document.createTextNode(node.checked ? '[x] ' : '[ ] ')));
+    holder.querySelectorAll(inactiveVariant()).forEach(node => node.remove());
     holder.querySelectorAll('img').forEach(node => node.replaceWith(document.createTextNode(node.alt)));
     return holder;
   }

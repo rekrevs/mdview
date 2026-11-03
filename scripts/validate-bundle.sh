@@ -20,12 +20,14 @@ for required in \
     "$resources/vendor/katex.min.css" \
     "$resources/vendor/highlight.min.js" \
     "$resources/vendor/markdown-it-footnote.min.js" \
+    "$resources/vendor/markdown-it-emoji.min.js" \
     "$resources/vendor/mermaid.min.js" \
     "$resources/vendor/manifest.json" \
     "$resources/vendor/licenses/markdown-it.txt" \
     "$resources/vendor/licenses/katex.txt" \
     "$resources/vendor/licenses/cdn-assets.txt" \
     "$resources/vendor/licenses/markdown-it-footnote.txt" \
+    "$resources/vendor/licenses/markdown-it-emoji.txt" \
     "$resources/vendor/licenses/octicons.txt" \
     "$resources/vendor/licenses/mermaid.txt" \
     "$resources/vendor/licenses/mermaid-bundled.txt"; do

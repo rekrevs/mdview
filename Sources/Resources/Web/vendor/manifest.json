@@ -672,5 +672,16 @@
         "license": "MIT"
       }
     ]
+  },
+  {
+    "name": "markdown-it-emoji",
+    "version": "3.1.0",
+    "license": "MIT",
+    "archive": "https://registry.npmjs.org/markdown-it-emoji/-/markdown-it-emoji-3.1.0.tgz",
+    "sha256": "9ce648b8d484edfbd84d530de1d6ad121dfc605057cf28ce2a352cf0387fa266",
+    "files": [
+      "licenses/markdown-it-emoji.txt",
+      "markdown-it-emoji.min.js"
+    ]
   }
 ]

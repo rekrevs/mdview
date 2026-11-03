@@ -53,7 +53,7 @@
     del: { datetime: pattern(/^[0-9A-Za-z:.+ -]{1,64}$/, false) }, ins: { datetime: pattern(/^[0-9A-Za-z:.+ -]{1,64}$/, false) }
   };
 
-  function create(md) {
+  function create(md, options = {}) {
     const escape = md.utils.escapeHtml;
     // Character references as a browser would decode them, so validation sees the real value.
     const decode = value => value.replace(/&(?:#[xX]([0-9a-fA-F]{1,8});?|#([0-9]{1,9});?|([A-Za-z][A-Za-z0-9]{1,31});)/g, (match, hex, decimal, name) => {
@@ -169,8 +169,15 @@
       const index = stack.findIndex(entry => entry.depth >= depth);
       return index < 0 ? '' : closeFrom(stack, index);
     }
+    // Text transform for HTML block text outside code (renderer.js: emoji shortcodes, as GitHub
+    // converts them in every text node except inside pre, code and tt).
+    const LITERAL = new Set(['pre', 'code', 'tt']);
+    function blockText(raw, stack) {
+      const value = decode(raw);
+      return escape(options.blockText && !stack.some(entry => LITERAL.has(entry.name)) ? options.blockText(value) : value);
+    }
     function tag(piece, stack, depth, scope, phrasingOnly = false) {
-      if (piece.type === 'text') return escapeText(piece.raw);
+      if (piece.type === 'text') return scope ? blockText(piece.raw, stack) : escapeText(piece.raw);
       if (piece.type === 'comment') return ''; // Hidden, as on GitHub.
       if (piece.type === 'other' || !ALLOWED.has(piece.name)) return escape(piece.raw);
       const name = piece.name;
@@ -271,8 +278,8 @@
     return { rule, parseSrcset, imageURL, linkURL };
   }
 
-  function installHTMLPolicy(md) {
-    const policy = create(md);
+  function installHTMLPolicy(md, options) {
+    const policy = create(md, options);
     md.set({ html: true });
     // Pushed last: runs after footnotes, alerts and reader metadata have shaped the token stream.
     md.core.ruler.push('author_html', policy.rule);

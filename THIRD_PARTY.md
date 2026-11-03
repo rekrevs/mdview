@@ -8,6 +8,7 @@ mdview bundles these libraries locally; no CDN is needed to render a document:
 | KaTeX | 0.18.9 | MIT | Math rendering and bundled fonts |
 | highlight.js CDN assets | 11.12.0 | BSD-3-Clause | Code syntax highlighting |
 | markdown-it-footnote | 4.0.0 | MIT | Footnote parsing |
+| markdown-it-emoji | 3.1.0 | MIT | GitHub emoji shortcodes (`dist/markdown-it-emoji.min.js`; its name-to-emoji data is derived from GitHub's gemoji, MIT) |
 | Primer Octicons | 19.42.0 | MIT | GitHub alert icons (five 16px SVG paths embedded in `renderer.js`; source SVGs kept in `vendor/octicons`) |
 | Mermaid | 12.2.0 | MIT | Diagram rendering (`dist/mermaid.min.js`, a single self-contained bundle loaded only for documents with diagrams) |
 

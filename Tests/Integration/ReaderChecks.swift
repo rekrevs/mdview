@@ -427,6 +427,49 @@ final class Checks: NSObject, NSApplicationDelegate {
         print("MERMAID ANCHOR \(anchorTop) -> \(anchorAfter)")
         check(try await bool(reader,"Array.from(document.querySelectorAll('figure.mermaid')).every(f=>f.dataset.state==='rendered')"),"forty diagrams all render")
         check(abs(anchorAfter-anchorTop)<3,"diagrams rendering above the viewport keep the reading position")
+        // Emoji shortcodes and appearance-tagged images (T-0025).
+        w.appearance=NSAppearance(named:.aqua)
+        try await until("light before emoji") { try await !self.bool(reader,"matchMedia('(prefers-color-scheme: dark)').matches") }
+        reader.updateMarkdown("# :rocket: Emoji check\n\nLaunch :rocket: today with `:rocket:` in code and :+1: approval.\n\n![Light variant](image%20with%20space.png#gh-light-mode-only)<img src=\"image with space.png#gh-dark-mode-only\" alt=\"Dark variant\">\n\nAfter the images.")
+        try await until("emoji document") { try await self.bool(reader,"document.querySelector('main h1')?.id==='rocket-emoji-check'") }
+        check(try await bool(reader,"(()=>{const p=document.querySelector('main p');return p.textContent==='Launch 🚀 today with :rocket: in code and 👍 approval.'&&p.querySelector('code').textContent===':rocket:'&&document.querySelector('main h1').textContent==='🚀 Emoji check'})()"),"emoji shortcodes render as Unicode; the code span keeps its shortcode")
+        check(reader.headings.map(\.title)==["🚀 Emoji check"] && reader.headings.map(\.id)==["rocket-emoji-check"],"outline shows the emoji; the heading id keeps the shortcode name")
+        let variantState="(()=>{const l=document.querySelector('img.gh-light-mode-only'),d=document.querySelector('img.gh-dark-mode-only');const v=i=>getComputedStyle(i).display!=='none'&&i.getBoundingClientRect().width>0;return [v(l),v(d),l.naturalWidth,d.naturalWidth,l===window.__variants?.[0]&&d===window.__variants?.[1]].join('|')})()"
+        try await until("variant images load") { try await self.bool(reader,"(()=>{const i=document.querySelectorAll('img.gh-light-mode-only,img.gh-dark-mode-only');return i.length===2&&[...i].every(n=>n.complete&&n.naturalWidth===128)})()") }
+        _ = try await js(reader,"window.__variants=[document.querySelector('img.gh-light-mode-only'),document.querySelector('img.gh-dark-mode-only')]; true")
+        let lightVariants=try await js(reader,variantState) as? String ?? ""
+        print("VARIANTS LIGHT \(lightVariants)")
+        check(lightVariants=="true|false|128|128|true","light appearance shows only the #gh-light-mode-only image")
+        _ = try await js(reader,"(()=>{const range=document.createRange();range.selectNodeContents(document.querySelector('main'));const s=getSelection();s.removeAllRanges();s.addRange(range);})()")
+        let emojiCopy=await copy(reader)
+        let emojiRich=board.string(forType:.html) ?? ""
+        print("EMOJI COPY \(String(reflecting:emojiCopy))")
+        check(emojiCopy.contains("🚀 Emoji check") && emojiCopy.contains("Launch 🚀 today with :rocket: in code and 👍 approval.") && emojiRich.contains("🚀"),"native Select All + Copy carries the emoji in both formats")
+        check(emojiCopy.contains("Light variant") && !emojiCopy.contains("Dark variant") && !emojiRich.contains("Dark variant"),"native Copy in light appearance gives only the light image's alt text")
+        _ = try await js(reader,"getSelection().removeAllRanges()")
+        _ = try await js(reader,"window.scrollTo(0,0)"); await delay(0.2)
+        try await snapshot(reader,"emoji-variants")
+        reader.findQuery="🚀"; reader.showFind()
+        try await until("find emoji") { reader.findCount>0 }
+        await delay(0.3)
+        check(reader.findCount==2,"Find matches the rendered emoji in heading and paragraph, not the code span")
+        reader.findQuery=":rocket:"; await delay(0.6)
+        check(reader.findCount==1,"Find matches the shortcode only in the code span")
+        reader.hideFind(); await delay(0.25)
+        w.appearance=NSAppearance(named:.darkAqua)
+        try await until("dark variants") { try await self.bool(reader,"matchMedia('(prefers-color-scheme: dark)').matches") }
+        await delay(0.2)
+        let darkVariants=try await js(reader,variantState) as? String ?? ""
+        print("VARIANTS DARK \(darkVariants)")
+        check(darkVariants=="false|true|128|128|true","dark appearance shows only the #gh-dark-mode-only image, on the same DOM nodes")
+        _ = try await js(reader,"(()=>{const range=document.createRange();range.selectNodeContents(document.querySelector('main'));const s=getSelection();s.removeAllRanges();s.addRange(range);})()")
+        let darkCopy=await copy(reader)
+        let darkRich=board.string(forType:.html) ?? ""
+        check(darkCopy.contains("Dark variant") && !darkCopy.contains("Light variant") && !darkRich.contains("Light variant"),"native Copy in dark appearance gives only the dark image's alt text")
+        _ = try await js(reader,"getSelection().removeAllRanges()")
+        try await snapshot(reader,"emoji-variants-dark")
+        w.appearance=NSAppearance(named:.aqua)
+        try await until("light after variants") { try await !self.bool(reader,"matchMedia('(prefers-color-scheme: dark)').matches") }
         // Adversarial corpus: nothing executes, navigates, or fetches from disallowed contexts.
         var opened:[URL]=[]
         reader.openExternal={opened.append($0);return true}
