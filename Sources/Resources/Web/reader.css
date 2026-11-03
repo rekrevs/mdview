@@ -2,7 +2,7 @@
 @media (prefers-color-scheme: dark) { :root { --foreground:#e6edf3; --background:#0d1117; --muted:#a7b0bb; --border:#30363d; --subtle:#161b22; --accent:#58a6ff; --code:#ffa657; } }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--background); color:var(--foreground); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.6; overflow-wrap:break-word; }
-main { max-width:54rem; margin:0 auto; padding:2.5rem 2.75rem 5rem; outline:none; }
+main { margin:0 auto; padding:2.5rem 2.75rem 5rem; outline:none; }
 main > :first-child { margin-top:0; }
 p,ul,ol,blockquote,pre,table { margin:0 0 1rem; }
 h1,h2,h3,h4,h5,h6 { line-height:1.3; margin:1.6em 0 .65em; font-weight:650; scroll-margin-top:1.5rem; }

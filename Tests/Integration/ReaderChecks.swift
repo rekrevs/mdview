@@ -216,6 +216,23 @@ final class Checks: NSObject, NSApplicationDelegate {
         try await until("narrow document") { try await self.bool(reader,"document.body.innerText.includes('introductory')") }
         check(try await bool(reader,"document.documentElement.scrollWidth<=window.innerWidth"),"inline math flows within 500-point window")
         try await snapshot(reader,"narrow-math")
+        reader.updateMarkdown(String(repeating: "A paragraph with ordinary reading text and inline $x^2$ that should reflow whenever the window width changes. ", count: 12))
+        try await until("resize fixture") { try await self.bool(reader,"document.body.innerText.includes('whenever the window width changes')") }
+        func resizeLayout(_ width: Double) async throws -> [String:Double] {
+            w.setContentSize(NSSize(width:width,height:700))
+            try await until("viewport width \(width)") { try await self.bool(reader,"innerWidth===\(Int(width))") }
+            return try await js(reader,"({viewport:innerWidth,main:document.querySelector('main').getBoundingClientRect().width,paragraph:document.querySelector('p').getBoundingClientRect().height,scroll:document.documentElement.scrollWidth})") as! [String:Double]
+        }
+        let medium = try await resizeLayout(1000)
+        let wide = try await resizeLayout(1200)
+        check(medium["main"]==medium["viewport"] && wide["main"]==wide["viewport"],"content uses window width beyond the former 864-point limit")
+        check(wide["paragraph"]! < medium["paragraph"]!,"widening an already wide window reflows text into fewer lines")
+        try await snapshot(reader,"resize-wide")
+        let narrow = try await resizeLayout(500)
+        check(narrow["paragraph"]! > wide["paragraph"]! && narrow["scroll"]==narrow["viewport"],"narrowing the same window reflows text without horizontal overflow")
+        try await snapshot(reader,"resize-narrow")
+        let restored = try await resizeLayout(1200)
+        check(restored["paragraph"]==wide["paragraph"],"widening again restores the layout without reloading")
         let big=(0..<2000).map{"Paragraph \($0): ordinary reading text."}.joined(separator:"\n\n")
         let start=Date(); reader.updateMarkdown(big)
         try await until("2000 paragraphs") { try await self.bool(reader,"document.querySelectorAll('p').length===2000") }

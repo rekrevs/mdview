@@ -7,6 +7,7 @@ A macOS Markdown reader with a native document window and one continuous, select
 ## Reading
 
 - Open `.md` and `.markdown` files from Finder or the Open dialog; each document has its own window.
+- Paragraphs reflow to the available window width as you resize, with smaller margins in narrow windows.
 - Select and copy across paragraphs, lists, tables and code blocks. The clipboard includes plain text and portable HTML: partial selections keep their formatting, tables carry borders/alignment, code retains a monospace font and indentation, and numbered-list excerpts retain their starting number. Relative links become absolute links back to the source files.
 - Formulas copy as LaTeX and images as alt text in both clipboard formats; copying does not yet create Office equations or embed images.
 - Follow heading anchors, relative Markdown links and external web/email links.
