@@ -12,6 +12,8 @@ A macOS Markdown reader with a native document window and one continuous, select
 - Formulas copy as LaTeX and images as alt text in both clipboard formats; copying does not yet create Office equations or embed images.
 - Follow heading anchors, relative Markdown links and external web/email links.
 - Read tables with column alignment, nested lists and quotes, task checkboxes, local images and syntax-highlighted code.
+- Render GitHub alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) with GitHub's title, icon and light/dark colours. As on GitHub, the marker must be alone on the first line of a top-level quote; otherwise the quote stays an ordinary quote.
+- Render `[^label]` footnotes as on GitHub: references are numbered by first use, link to the notes at the end of the document, and the notes link back to every reference. Labels are case-insensitive, unused definitions are hidden, and `^[inline]` notes are not supported. Copying gives references as `[1]` and notes as `[1] text`, without icons, back-links or hidden labels.
 - Show leading YAML front matter as a GitHub-style metadata table. Values are plain text; nested or unusual YAML and `+++` TOML front matter are shown as highlighted source. A document that starts with a `---` line and has a later `---` line is treated as front matter, as on GitHub.
 - Render inline `$…$`, display `$$…$$` and fenced `math` blocks with KaTeX, including matrices and multiline environments supported by KaTeX.
 - Find prose and code with `⌘F`, navigate the heading outline, and zoom the active document without changing other windows. Search matches across inline formatting; it excludes formula internals.

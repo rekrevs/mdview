@@ -16,6 +16,9 @@ PACKAGES = [
     ('markdown-it', '15.0.2', 'markdown-it-15.0.2.tgz', 'MIT', {'dist/browser/markdown-it.umd.min.js': 'markdown-it.min.js'}),
     ('katex', '0.18.9', 'katex-0.18.9.tgz', 'MIT', {'dist/katex.min.js': 'katex.min.js', 'dist/katex.min.css': 'katex.min.css'}),
     ('@highlightjs/cdn-assets', '11.12.0', 'highlightjs-cdn-assets-11.12.0.tgz', 'BSD-3-Clause', {'highlight.min.js': 'highlight.min.js'}),
+    ('markdown-it-footnote', '4.0.0', 'markdown-it-footnote-4.0.0.tgz', 'MIT', {'dist/markdown-it-footnote.min.js': 'markdown-it-footnote.min.js'}),
+    # Source of the GitHub alert icon paths embedded in renderer.js (kept for provenance tests).
+    ('@primer/octicons', '19.42.0', 'primer-octicons-19.42.0.tgz', 'MIT', {f'build/svg/{icon}-16.svg': f'octicons/{icon}-16.svg' for icon in ('info', 'light-bulb', 'report', 'alert', 'stop')}),
 ]
 manifest_path = ROOT / 'manifest.json'
 previous = json.loads(manifest_path.read_text()) if manifest_path.exists() else []

@@ -92,5 +92,31 @@
       "highlight.min.js",
       "licenses/cdn-assets.txt"
     ]
+  },
+  {
+    "name": "markdown-it-footnote",
+    "version": "4.0.0",
+    "license": "MIT",
+    "archive": "https://registry.npmjs.org/markdown-it-footnote/-/markdown-it-footnote-4.0.0.tgz",
+    "sha256": "319e1c784b74a73b473e76a1bb725d3770c5a2e409dfd8c30c504f3a2712e272",
+    "files": [
+      "licenses/markdown-it-footnote.txt",
+      "markdown-it-footnote.min.js"
+    ]
+  },
+  {
+    "name": "@primer/octicons",
+    "version": "19.42.0",
+    "license": "MIT",
+    "archive": "https://registry.npmjs.org/@primer/octicons/-/octicons-19.42.0.tgz",
+    "sha256": "8ae65252de0d8b24e068362c375533ef9a00fdf04e99f23d80df680d34138237",
+    "files": [
+      "licenses/octicons.txt",
+      "octicons/alert-16.svg",
+      "octicons/info-16.svg",
+      "octicons/light-bulb-16.svg",
+      "octicons/report-16.svg",
+      "octicons/stop-16.svg"
+    ]
   }
 ]

@@ -10,7 +10,7 @@ function reader() {
   window.webkit = { messageHandlers: { reader: { postMessage: message => messages.push(message) } } };
   window.scrollTo = () => {};
   window.HTMLElement.prototype.scrollIntoView = () => {};
-  for (const file of ['vendor/markdown-it.min.js', 'vendor/katex.min.js', 'vendor/highlight.min.js', 'renderer.js']) window.eval(fs.readFileSync(path.join(web, file), 'utf8'));
+  for (const file of ['vendor/markdown-it.min.js', 'vendor/markdown-it-footnote.min.js', 'vendor/katex.min.js', 'vendor/highlight.min.js', 'renderer.js']) window.eval(fs.readFileSync(path.join(web, file), 'utf8'));
   const root = window.document.getElementById('document');
   return { window, root, messages, render: (text, options = {}) => window.mdview.render(text, options), close: () => window.close() };
 }
@@ -245,4 +245,163 @@ test('unsupported front matter stays visible as highlighted source and values st
   assert.deepEqual(Array.from(r.root.querySelectorAll('td'), n => n.textContent), ['$x^2$', '<script>window.evil=1</script>', 'http://x:80/a', '12:30', 'a **b**', 'x # y']);
   r.render('+++\ntitle = "T"\n+++\nBody');
   assert.ok(r.root.querySelector('.front-matter-source code.language-toml')); r.close();
+});
+
+// GitHub alerts and footnotes (T-0020). Expectations follow GitHub /markdown (gfm) output recorded 2026-11-03.
+const alertTypes = { note: 'info', tip: 'light-bulb', important: 'report', warning: 'alert', caution: 'stop' };
+test('all five GitHub alert types render as titled, iconed alerts; marker is case-insensitive', () => {
+  const r = reader();
+  r.render('> [!NOTE]\n> n\n\n> [!tip]\n> t\n\n> [!Important]\n> i\n\n> [!WARNING]   \n> w\n\n> [!CAUTION]\n> c');
+  const alerts = r.root.querySelectorAll(':scope > div.markdown-alert');
+  assert.equal(alerts.length, 5); assert.equal(r.root.querySelectorAll('blockquote').length, 0);
+  Object.keys(alertTypes).forEach((type, index) => {
+    const alert = alerts[index];
+    assert.ok(alert.classList.contains(`markdown-alert-${type}`), type);
+    const title = alert.firstElementChild;
+    assert.ok(title.matches('p.markdown-alert-title'), type);
+    assert.equal(title.textContent, type[0].toUpperCase() + type.slice(1));
+    const svg = title.querySelector('svg.octicon');
+    assert.equal(svg.getAttribute('aria-hidden'), 'true'); assert.equal(svg.getAttribute('width'), '16');
+    assert.equal(alert.children.length, 2); assert.equal(alert.children[1].textContent, type[0]);
+    assert.ok(!alert.textContent.includes('[!'));
+  });
+  r.close();
+});
+test('alert icons are the vendored Primer Octicons paths', () => {
+  const r = reader();
+  r.render(Object.keys(alertTypes).map(type => `> [!${type}]\n> x`).join('\n\n'));
+  for (const [type, icon] of Object.entries(alertTypes)) {
+    const svg = fs.readFileSync(path.join(web, `vendor/octicons/${icon}-16.svg`), 'utf8');
+    const expected = /<path d="([^"]+)"/.exec(svg)[1];
+    assert.equal(r.root.querySelector(`.markdown-alert-${type} svg path`).getAttribute('d'), expected, type);
+  }
+  r.close();
+});
+test('non-alert quotes stay ordinary blockquotes as on GitHub', () => {
+  const r = reader();
+  for (const text of ['> [!NOTE] text\n> more', '> [!INFO]\n> x', '> intro\n> [!NOTE]\n> x', '> > [!NOTE]\n> > x', '- > [!NOTE]\n  > x', '> [!NOTE]', '> [!NOTE]\n>\n', '> # [!NOTE]\n> x', '[!NOTE]\nx']) {
+    r.render(text);
+    assert.equal(r.root.querySelectorAll('.markdown-alert').length, 0, JSON.stringify(text));
+    assert.ok(r.root.textContent.includes('[!'), JSON.stringify(text));
+  }
+  r.close();
+});
+test('alert edge cases follow GitHub: escaped marker, lazy line, blank line after marker', () => {
+  const r = reader();
+  r.render('> \\[!NOTE]\n> x'); assert.ok(r.root.querySelector('.markdown-alert-note')); assert.equal(r.root.querySelector('.markdown-alert').children[1].textContent, 'x');
+  r.render('> [!NOTE]\nlazy'); assert.equal(r.root.querySelector('.markdown-alert-note').children[1].textContent, 'lazy');
+  r.render('> [!NOTE]\n>\n> para'); assert.equal(r.root.querySelector('.markdown-alert-note').children[1].textContent, 'para');
+  r.close();
+});
+test('alerts keep nested headings (in outline), math, code and lists', () => {
+  const r = reader();
+  r.render('> [!TIP]\n> # Inside alert\n> text $x^2$\n>\n> - item\n>\n> ```python\n> print(1)\n> ```\n\n# After');
+  const alert = r.root.querySelector('.markdown-alert-tip');
+  assert.equal(alert.querySelector('h1').id, 'inside-alert');
+  assert.ok(alert.querySelector('[data-math] .katex')); assert.ok(alert.querySelector('li'));
+  assert.equal(alert.querySelector('code.language-python').textContent, 'print(1)\n');
+  assert.deepEqual(Array.from(r.messages.filter(m => m.type === 'headings').at(-1).headings, h => h.title), ['Inside alert', 'After']);
+  r.close();
+});
+test('footnotes number by first reference with GitHub ids, repeated refs and back-links', () => {
+  const r = reader();
+  r.render('A[^b] B[^a] C[^b]\n\n[^a]: Alpha\n[^b]: Bravo\n[^unused]: Unused\n\n    # Unused heading\n\n# fn a');
+  const refs = r.root.querySelectorAll('sup.footnote-ref > a[data-footnote-ref]');
+  assert.deepEqual(Array.from(refs, a => a.textContent), ['1', '2', '1']);
+  assert.deepEqual(Array.from(refs, a => a.getAttribute('href')), ['#fn-b', '#fn-a', '#fn-b']);
+  assert.deepEqual(Array.from(refs, a => a.id), ['fnref-b', 'fnref-a', 'fnref-b-2']);
+  assert.equal(refs[0].getAttribute('aria-describedby'), 'footnote-label');
+  const section = r.root.querySelector('section.footnotes[data-footnotes]');
+  assert.equal(section, r.root.lastElementChild); assert.equal(r.root.querySelectorAll('hr').length, 0);
+  assert.ok(section.querySelector('h2#footnote-label.sr-only'));
+  const items = section.querySelectorAll('ol > li');
+  assert.deepEqual(Array.from(items, li => li.id), ['fn-b', 'fn-a']);
+  assert.ok(!section.textContent.includes('Unused'));
+  const back = items[0].querySelectorAll('a.footnote-backref[data-footnote-backref]');
+  assert.deepEqual(Array.from(back, a => a.getAttribute('href')), ['#fnref-b', '#fnref-b-2']);
+  assert.deepEqual(Array.from(back, a => a.getAttribute('aria-label')), ['Back to reference 1', 'Back to reference 1-2']);
+  assert.equal(back[1].querySelector('sup').textContent, '2');
+  assert.equal(items[0].querySelector('p').firstChild.textContent, 'Bravo ');
+  const headings = Array.from(r.messages.filter(m => m.type === 'headings').at(-1).headings);
+  assert.deepEqual(headings.map(h => h.title), ['fn a']);
+  assert.notEqual(headings[0].id, 'fn-a'); assert.equal(r.root.querySelectorAll('#fn-a').length, 1);
+  r.close();
+});
+test('footnote labels are case-insensitive and the first duplicate definition wins, as on GitHub', () => {
+  const r = reader();
+  r.render('X[^Note] Y[^note]\n\n[^note]: lower');
+  assert.deepEqual(Array.from(r.root.querySelectorAll('[data-footnote-ref]'), a => a.textContent), ['1', '1']);
+  assert.equal(r.root.querySelectorAll('section.footnotes li').length, 1);
+  assert.match(r.root.querySelector('section.footnotes li').textContent, /lower/);
+  r.render('X[^a]\n\n[^a]: one\n[^a]: two');
+  assert.equal(r.root.querySelectorAll('section.footnotes li').length, 1);
+  assert.match(r.root.querySelector('section.footnotes li').textContent, /one/);
+  assert.ok(!r.root.textContent.includes('two'));
+  r.close();
+});
+test('multi-paragraph footnotes keep code and math; missing and inline notes stay literal', () => {
+  const r = reader();
+  r.render('X[^1] and [^missing] and ^[inline]\n\n[^1]: First $x^2$\n\n    ```\n    code\n    ```\n\n    Second para');
+  const item = r.root.querySelector('section.footnotes li#fn-1');
+  assert.ok(item.querySelector('[data-math] .katex')); assert.equal(item.querySelector('pre code').textContent, 'code\n');
+  const paragraphs = item.querySelectorAll('p');
+  assert.equal(paragraphs.length, 2); assert.ok(paragraphs[1].querySelector('.footnote-backref'));
+  assert.ok(r.root.querySelector('p').textContent.includes('[^missing] and ^[inline]'));
+  assert.equal(r.root.querySelectorAll('[data-footnote-ref]').length, 1);
+  r.render('No definitions [^a].'); assert.equal(r.root.querySelectorAll('section.footnotes').length, 0);
+  r.close();
+});
+test('footnote labels with special characters produce escaped ids and encoded hrefs', () => {
+  const r = reader();
+  r.render('Z[^ä] Q[^a"b]\n\n[^ä]: umlaut\n[^a"b]: quote');
+  const refs = r.root.querySelectorAll('[data-footnote-ref]');
+  assert.equal(refs[0].getAttribute('href'), '#fn-%C3%A4'); assert.equal(refs[0].id, 'fnref-ä');
+  assert.equal(refs[1].id, 'fnref-a"b');
+  assert.ok(r.root.querySelector('li[id="fn-a\\"b"]'));
+  assert.equal(r.window.mdview.scrollToHeading(refs[0].getAttribute('href')), true);
+  r.close();
+});
+test('footnote and back-link clicks scroll and post the anchor; legacy GitHub ids resolve', () => {
+  const r = reader(); r.render('A[^b]\n\n[^b]: Bravo');
+  const scrolled = [];
+  r.window.HTMLElement.prototype.scrollIntoView = function () { scrolled.push(this.id); };
+  r.root.querySelector('[data-footnote-ref]').click();
+  r.root.querySelector('.footnote-backref').click();
+  assert.deepEqual(r.messages.filter(m => m.type === 'link').map(m => m.href), ['#fn-b', '#fnref-b']);
+  assert.deepEqual(scrolled, ['fn-b', 'fnref-b']);
+  assert.equal(r.window.mdview.scrollToHeading('#user-content-fn-b'), true);
+  assert.equal(r.window.mdview.scrollToHeading('fn-b'), true);
+  assert.equal(r.window.mdview.scrollToHeading('#nothing-here'), false);
+  r.close();
+});
+test('copy turns footnote refs into [n], drops icons, back-links and hidden labels', () => {
+  const r = reader();
+  r.render('> [!WARNING]\n> Careful[^b].\n\nText[^a] more[^b].\n\n[^a]: Alpha note\n[^b]: Bravo note');
+  const data = clipboard(r), plain = data['text/plain'];
+  assert.ok(plain.includes('Warning\n\nCareful[1].'), plain);
+  assert.ok(plain.includes('Text[2] more[1].'), plain);
+  assert.ok(plain.includes('[1] Bravo note\n[2] Alpha note'), plain);
+  assert.ok(!plain.includes('↩') && !plain.includes('Footnotes'), plain);
+  const html = data['text/html'], doc = new JSDOM(html).window.document;
+  assert.ok(!html.includes('<svg') && !html.includes('↩') && !html.includes('Footnotes'), html);
+  assert.equal(doc.querySelectorAll('[class]').length, 0);
+  assert.equal(doc.querySelector('sup').textContent, '1'); assert.equal(doc.querySelectorAll('sup a').length, 0);
+  const alert = doc.body.firstElementChild;
+  assert.match(alert.style.borderLeft, /solid/); assert.equal(alert.firstElementChild.style.fontWeight, 'bold');
+  assert.equal(alert.firstElementChild.style.color, alert.style.borderLeftColor);
+  assert.match(doc.querySelector('section').style.borderTop, /solid/);
+  r.close();
+});
+test('find counts visible footnote text but not the hidden Footnotes label', () => {
+  const r = reader(); r.render('> [!NOTE]\n> Alert body\n\nText[^a]\n\n[^a]: Footnote body');
+  assert.equal(r.window.mdview.find('Footnote body', 1, true).count, 1);
+  assert.equal(r.window.mdview.find('Footnotes', 1, true).count, 0);
+  assert.equal(r.window.mdview.find('Alert body', 1, true).count, 1);
+  r.close();
+});
+test('front matter still works alongside alerts and footnotes', () => {
+  const r = reader(); r.render('---\ntitle: T\n---\n\n> [!NOTE]\n> x[^a]\n\n[^a]: y');
+  assert.ok(r.root.firstElementChild.matches('table.front-matter'));
+  assert.ok(r.root.querySelector('.markdown-alert-note [data-footnote-ref]'));
+  r.close();
 });

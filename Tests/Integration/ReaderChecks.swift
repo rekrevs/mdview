@@ -254,6 +254,64 @@ final class Checks: NSObject, NSApplicationDelegate {
         check(frontCopy.contains("GUI front matter") && frontCopy.contains("$x^2$"),"native Copy includes front matter values and body")
         _ = try await js(reader,"getSelection().removeAllRanges()")
         try await snapshot(reader,"front-matter")
+        // GitHub alerts and footnotes (T-0020).
+        let filler=(1...40).map{"Filler paragraph \($0) keeps the notes below the first screen."}.joined(separator:"\n\n")
+        reader.updateMarkdown("# Alerts and notes\n\n> [!NOTE]\n> Note body with a reference[^b].\n\n> [!TIP]\n> Tip body.\n\n> [!IMPORTANT]\n> Important body.\n\n> [!WARNING]\n> ## Heading inside alert\n> Warning body $x^2$.\n\n> [!CAUTION]\n> Caution body.\n\nPlain paragraph with notes[^a] and again[^b].\n\n\(filler)\n\n[^a]: Alpha footnote text.\n[^b]: Bravo footnote text.\n[^unused]: Unused footnote text.")
+        try await until("alerts and footnotes") { try await self.bool(reader,"document.querySelectorAll('.markdown-alert').length===5 && document.querySelector('section.footnotes')!==null") }
+        _ = try await js(reader,"window.scrollTo(0,0)"); await delay(0.2)
+        func alertColors() async throws -> [String] {
+            try await js(reader,"Array.from(document.querySelectorAll('.markdown-alert'),a=>{const t=a.querySelector('.markdown-alert-title');return getComputedStyle(a).borderLeftColor+'|'+getComputedStyle(t).color+'|'+getComputedStyle(a).borderLeftStyle+'|'+t.textContent})") as? [String] ?? []
+        }
+        let lightAlerts=try await alertColors()
+        print("ALERTS LIGHT \(lightAlerts)")
+        check(lightAlerts==["rgb(9, 105, 218)|rgb(9, 105, 218)|solid|Note","rgb(26, 127, 55)|rgb(26, 127, 55)|solid|Tip","rgb(130, 80, 223)|rgb(130, 80, 223)|solid|Important","rgb(154, 103, 0)|rgb(154, 103, 0)|solid|Warning","rgb(209, 36, 47)|rgb(209, 36, 47)|solid|Caution"],"five alerts show GitHub light border and title colours")
+        check(try await bool(reader,"Array.from(document.querySelectorAll('.markdown-alert-title svg.octicon')).every(s=>{const r=s.getBoundingClientRect();return r.width===16&&r.height===16&&getComputedStyle(s).fill===getComputedStyle(s.parentElement).color})"),"alert icons are visible 16-point octicons in the title colour")
+        check(try await bool(reader,"!document.body.innerText.includes('[!') && !document.body.innerText.includes('Unused footnote') && getComputedStyle(document.querySelector('#footnote-label')).width==='1px'"),"alert markers, unused notes and the Footnotes label are not visible")
+        check(reader.headings.map(\.title)==["Alerts and notes","Heading inside alert"],"outline includes heading inside alert and excludes Footnotes")
+        try await snapshot(reader,"alerts-light")
+        func inView(_ selector:String) async throws -> Bool {
+            try await bool(reader,"(()=>{const r=document.querySelector('\(selector)').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight})()")
+        }
+        func clickElement(_ selector:String) async throws {
+            let rect=try await js(reader,"(()=>{const r=document.querySelector('\(selector)').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};})()") as! [String:Double]
+            let p=point(rect["x"]!,rect["y"]!)
+            NSApp.postEvent(mouse(.leftMouseUp,p,w),atStart:false)
+            NSApp.sendEvent(mouse(.leftMouseDown,p,w))
+            while let event=NSApp.nextEvent(matching:[.leftMouseDragged,.leftMouseUp],until:Date(),inMode:.default,dequeue:true) { NSApp.sendEvent(event) }
+            await delay(0.4)
+        }
+        let noteHidden=try await !inView("#fn-b")
+        check(noteHidden,"footnote starts below the visible page")
+        try await clickElement("#fnref-b")
+        let scrolledToNote=try await bool(reader,"window.scrollY>0"), noteVisible=try await inView("#fn-b")
+        check(scrolledToNote && noteVisible,"mouse click on a footnote reference scrolls its note into view")
+        try await snapshot(reader,"footnotes")
+        try await clickElement("#fn-b .footnote-backref")
+        check(try await inView("#fnref-b"),"mouse click on the back-link returns to the reference")
+        _ = try await js(reader,"(()=>{const range=document.createRange();range.selectNodeContents(document.querySelector('main'));const s=getSelection();s.removeAllRanges();s.addRange(range);})()")
+        let footCopy=await copy(reader)
+        let footRich=board.string(forType:.html) ?? ""
+        try footRich.write(to:output.appendingPathComponent("footnotes-clipboard.html"),atomically:true,encoding:.utf8)
+        print("FOOTNOTE COPY \(String(reflecting:String(footCopy.prefix(200)))) … \(String(reflecting:String(footCopy.suffix(80))))")
+        check(footCopy.contains("Note\n\nNote body with a reference[1].") && footCopy.contains("notes[2] and again[1].") && footCopy.contains("[1] Bravo footnote text.\n[2] Alpha footnote text.") && !footCopy.contains("↩") && !footCopy.contains("Footnotes"),"native Copy gives alert titles and [n] footnotes without back-links")
+        check(!footRich.contains("<svg") && !footRich.contains("↩") && footRich.contains("border-left: 4px solid rgb(9, 105, 218)"),"native HTML clipboard has portable alert styles and no icons or back-links")
+        _ = try await js(reader,"getSelection().removeAllRanges()")
+        reader.findQuery="Bravo footnote"; reader.showFind()
+        try await until("find footnote text") { reader.findCount==1 }
+        check(true,"Find locates footnote text once")
+        reader.findQuery="Footnotes"; await delay(0.5)
+        check(reader.findCount==0,"Find ignores the hidden Footnotes label")
+        reader.hideFind(); await delay(0.25)
+        _ = try await js(reader,"window.scrollTo(0,0)")
+        w.appearance=NSAppearance(named:.darkAqua)
+        try await until("dark alerts") { try await self.bool(reader,"matchMedia('(prefers-color-scheme: dark)').matches") }
+        await delay(0.2)
+        let darkAlerts=try await alertColors()
+        print("ALERTS DARK \(darkAlerts)")
+        check(darkAlerts==["rgb(68, 147, 248)|rgb(68, 147, 248)|solid|Note","rgb(63, 185, 80)|rgb(63, 185, 80)|solid|Tip","rgb(171, 125, 248)|rgb(171, 125, 248)|solid|Important","rgb(210, 153, 34)|rgb(210, 153, 34)|solid|Warning","rgb(248, 81, 73)|rgb(248, 81, 73)|solid|Caution"],"five alerts show GitHub dark border and title colours")
+        try await snapshot(reader,"alerts-dark")
+        w.appearance=NSAppearance(named:.aqua)
+        try await until("light again") { try await !self.bool(reader,"matchMedia('(prefers-color-scheme: dark)').matches") }
         reader.updateMarkdown("Bad formula: $\\notARealCommand{x}$\n\n<script>window.injected=true</script>\n\n[javascript](javascript:alert(1))")
         try await until("invalid formula fallback") { try await self.bool(reader,"document.querySelector('.math-error')!==null") }
         check(try await bool(reader,"!window.injected && !document.querySelector('main script') && !document.querySelector('a[href^=javascript]')"),"document scripts and unsafe link schemes cannot execute")

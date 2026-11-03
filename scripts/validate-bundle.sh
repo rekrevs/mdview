@@ -18,10 +18,13 @@ for required in \
     "$resources/vendor/katex.min.js" \
     "$resources/vendor/katex.min.css" \
     "$resources/vendor/highlight.min.js" \
+    "$resources/vendor/markdown-it-footnote.min.js" \
     "$resources/vendor/manifest.json" \
     "$resources/vendor/licenses/markdown-it.txt" \
     "$resources/vendor/licenses/katex.txt" \
-    "$resources/vendor/licenses/cdn-assets.txt"; do
+    "$resources/vendor/licenses/cdn-assets.txt" \
+    "$resources/vendor/licenses/markdown-it-footnote.txt" \
+    "$resources/vendor/licenses/octicons.txt"; do
     if [[ ! -s "$required" ]]; then
         echo "Bundle is missing a required nonempty file: $required" >&2
         exit 1

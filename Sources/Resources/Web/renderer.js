@@ -168,8 +168,90 @@
     return `<table class="front-matter"><thead><tr>${pairs.map(([key]) => `<th>${escape(key)}</th>`).join('')}</tr></thead><tbody><tr>${pairs.map(([, value]) => `<td>${cell(value)}</td>`).join('')}</tr></tbody></table>\n`;
   };
 
-  md.core.ruler.after('inline', 'reader_metadata', state => {
-    const used = new Set();
+  // GitHub alerts: a top-level quote whose first line is only [!TYPE] (cmark-gfm behaviour,
+  // checked against GitHub's renderer). Icon paths come from vendor/octicons (Primer Octicons, MIT).
+  const alertIcons = {
+    note: 'M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z',
+    tip: 'M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 0 1-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 0 0-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863 0 8 0s5.5 2.31 5.5 5.25c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.319-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.751.751 0 0 1-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848.075-.088.147-.173.213-.253.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75ZM5.75 12h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5ZM6 15.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z',
+    important: 'M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z',
+    warning: 'M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z',
+    caution: 'M4.47.22A.749.749 0 0 1 5 0h6c.199 0 .389.079.53.22l4.25 4.25c.141.14.22.331.22.53v6a.749.749 0 0 1-.22.53l-4.25 4.25A.749.749 0 0 1 11 16H5a.749.749 0 0 1-.53-.22L.22 11.53A.749.749 0 0 1 0 11V5c0-.199.079-.389.22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z'
+  };
+  md.core.ruler.after('block', 'github_alerts', state => {
+    const tokens = state.tokens;
+    for (let i = 0; i < tokens.length; i++) {
+      const open = tokens[i];
+      if (open.type !== 'blockquote_open' || open.level !== 0 || tokens[i + 1]?.type !== 'paragraph_open') continue;
+      const inline = tokens[i + 2];
+      const match = /^\\?\[!(note|tip|important|warning|caution)\][ \t]*(?:\n|$)/i.exec(inline.content);
+      if (!match) continue;
+      const rest = inline.content.slice(match[0].length);
+      // A marker without any following content stays an ordinary quote, as on GitHub.
+      if (!rest && tokens[i + 4]?.type === 'blockquote_close') continue;
+      if (rest) inline.content = rest; else tokens.splice(i + 1, 3);
+      let depth = 0, close = i;
+      while (++close < tokens.length) {
+        if (tokens[close].type === 'blockquote_open') depth++;
+        else if (tokens[close].type === 'blockquote_close' && depth-- === 0) break;
+      }
+      const kind = match[1].toLowerCase();
+      open.type = 'alert_open'; open.tag = 'div'; open.attrs = [['class', `markdown-alert markdown-alert-${kind}`]];
+      tokens[close].type = 'alert_close'; tokens[close].tag = 'div';
+      const title = new state.Token('alert_title', '', 0);
+      title.block = true; title.meta = { kind }; title.level = 1;
+      tokens.splice(i + 1, 0, title);
+    }
+  });
+  md.renderer.rules.alert_title = (tokens, index) => {
+    const kind = tokens[index].meta.kind;
+    return `<p class="markdown-alert-title"><svg class="octicon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="${alertIcons[kind]}"></path></svg>${kind[0].toUpperCase() + kind.slice(1)}</p>\n`;
+  };
+
+  // Footnotes (markdown-it-footnote) with cmark-gfm/GitHub label rules and markup.
+  md.use(window.markdownitFootnote);
+  md.disable('footnote_inline'); // ^[inline] notes are not GitHub syntax.
+  const footnoteLabel = label => String(label).toUpperCase().toLowerCase();
+  md.core.ruler.after('block', 'footnote_labels', state => {
+    if (!state.env.footnotes?.refs) return;
+    const refs = {}, seen = new Set();
+    state.tokens.forEach((token, index) => {
+      if (token.type !== 'footnote_reference_open') return;
+      const label = footnoteLabel(token.meta.label);
+      // The first definition wins; a later duplicate is parked under an unreachable label.
+      if (seen.has(label)) token.meta.label = `\u0000duplicate-${index}`;
+      else { seen.add(label); token.meta.label = label; refs[':' + label] = -1; }
+    });
+    const key = property => typeof property === 'string' && property.startsWith(':') ? ':' + footnoteLabel(property.slice(1)) : property;
+    state.env.footnotes.refs = new Proxy(refs, {
+      get: (target, property) => Object.prototype.hasOwnProperty.call(target, key(property)) ? target[key(property)] : undefined,
+      set: (target, property, value) => { target[key(property)] = value; return true; }
+    });
+  });
+  md.core.ruler.before('footnote_tail', 'footnote_list_labels', state => {
+    state.env.footnotes?.list?.forEach(item => { if (item.label !== undefined) item.label = footnoteLabel(item.label); });
+  });
+  const footnoteIds = (label, subId) => ({ item: `fn-${label}`, ref: subId > 0 ? `fnref-${label}-${subId + 1}` : `fnref-${label}` });
+  md.renderer.rules.footnote_ref = (tokens, index) => {
+    const { id, subId, label } = tokens[index].meta, ids = footnoteIds(footnoteLabel(label), subId);
+    return `<sup class="footnote-ref"><a href="#${escape(encodeURIComponent(ids.item))}" id="${escape(ids.ref)}" data-footnote-ref aria-describedby="footnote-label">${id + 1}</a></sup>`;
+  };
+  md.renderer.rules.footnote_block_open = () => '<section class="footnotes" data-footnotes>\n<h2 id="footnote-label" class="sr-only">Footnotes</h2>\n<ol>\n';
+  md.renderer.rules.footnote_block_close = () => '</ol>\n</section>\n';
+  md.renderer.rules.footnote_open = (tokens, index) => `<li id="${escape(footnoteIds(tokens[index].meta.label, 0).item)}" class="footnote-item">\n`;
+  md.renderer.rules.footnote_anchor = (tokens, index) => {
+    const { id, subId, label } = tokens[index].meta, ids = footnoteIds(label, subId);
+    const reference = subId > 0 ? `${id + 1}-${subId + 1}` : `${id + 1}`;
+    return ` <a href="#${escape(encodeURIComponent(ids.ref))}" class="footnote-backref" data-footnote-backref aria-label="Back to reference ${reference}">↩︎${subId > 0 ? `<sup>${subId + 1}</sup>` : ''}</a>`;
+  };
+
+  // Runs after footnote_tail so unused definitions never reach the outline.
+  md.core.ruler.after('footnote_tail', 'reader_metadata', state => {
+    const used = new Set(['footnote-label']);
+    for (const item of state.env.footnotes?.list || []) {
+      if (item.label === undefined) continue;
+      used.add(footnoteIds(item.label, 0).item);
+      for (let sub = 0; sub < Math.max(1, item.count); sub++) used.add(footnoteIds(item.label, sub).ref);
+    }
     state.env.headings = [];
     for (let i = 0; i < state.tokens.length; i++) {
       const token = state.tokens[i];
@@ -241,12 +323,17 @@
   }
 
   function scrollToHeading(id) {
-    try { id = decodeURIComponent(String(id).replace(/^#/, '')); } catch (_) { return false; }
-    if (!id) { window.scrollTo(0, 0); return true; }
-    const target = document.getElementById(id);
-    if (!target || !root.contains(target)) return false;
-    target.scrollIntoView({ block: 'start' });
-    return true;
+    const raw = String(id ?? '').replace(/^#/, '');
+    if (!raw) { window.scrollTo(0, 0); return true; }
+    // Try the id as written, then percent-decoded, then without GitHub's user-content- prefix.
+    const candidates = [raw];
+    try { candidates.push(decodeURIComponent(raw)); } catch (_) { /* Keep the raw candidate. */ }
+    for (const candidate of [...candidates]) if (candidate.startsWith('user-content-')) candidates.push(candidate.slice(13));
+    for (const candidate of candidates) {
+      const target = candidate && document.getElementById(candidate);
+      if (target && root.contains(target)) { target.scrollIntoView({ block: 'start' }); return true; }
+    }
+    return false;
   }
 
   function indexText() {
@@ -257,7 +344,7 @@
         segments.push({ node, start: text.length, end: text.length + node.data.length }); text += node.data; return;
       }
       if (node.nodeType !== Node.ELEMENT_NODE) return;
-      if (node.matches('button,input,[data-math]')) { text += '\n'; return; }
+      if (node.matches('button,input,[data-math],.sr-only')) { text += '\n'; return; }
       const block = blocks.has(node.tagName);
       if (block && text && !text.endsWith('\n')) text += '\n';
       for (const child of node.childNodes) visit(child);
@@ -331,7 +418,18 @@
       const offset = children.findIndex(node => range.intersectsNode(node));
       if (offset >= 0) copy.start = (source.hasAttribute('start') ? Number(source.getAttribute('start')) : 1) + offset;
     });
-    holder.querySelectorAll('button').forEach(node => node.remove());
+    holder.querySelectorAll('button,svg.octicon,.sr-only').forEach(node => node.remove());
+    holder.querySelectorAll('.footnote-backref').forEach(node => {
+      const before = node.previousSibling;
+      if (before?.nodeType === Node.TEXT_NODE) before.data = before.data.replace(/[ \t]+$/, '');
+      node.remove();
+    });
+    // Footnote items copy with their visible number, e.g. "[1] Note text".
+    const footnoteItems = Array.from(root.querySelectorAll('section.footnotes > ol > li'));
+    holder.querySelectorAll('section.footnotes li[id], li.footnote-item').forEach(copy => {
+      const number = footnoteItems.findIndex(item => item.id === copy.id) + 1;
+      if (number) copy.dataset.footnoteNumber = String(number);
+    });
     holder.querySelectorAll('[data-math]').forEach(node => node.replaceWith(document.createTextNode(node.classList.contains('math-display') ? '\n\n' + node.dataset.math + '\n\n' : node.dataset.math)));
     holder.querySelectorAll('input[type="checkbox"]').forEach(node => node.replaceWith(document.createTextNode(node.checked ? '[x] ' : '[ ] ')));
     holder.querySelectorAll('img').forEach(node => node.replaceWith(document.createTextNode(node.alt)));
@@ -340,12 +438,14 @@
   function plainText(node) {
     if (node.nodeType === Node.TEXT_NODE) {
       // Ignore HTML formatter line breaks between blocks, preserving every code byte.
-      if (/^\s*\n\s*$/.test(node.data) && ['DIV', 'MAIN', 'TABLE', 'THEAD', 'TBODY', 'TR', 'UL', 'OL', 'BLOCKQUOTE'].includes(node.parentElement?.tagName)) return '';
+      if (/^\s*\n\s*$/.test(node.data) && (['DIV', 'MAIN', 'TABLE', 'THEAD', 'TBODY', 'TR', 'UL', 'OL', 'BLOCKQUOTE', 'SECTION'].includes(node.parentElement?.tagName) || node.parentElement?.classList.contains('footnote-item'))) return '';
       return node.data;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return '';
     if (node.tagName === 'BR') return '\n';
     let text = Array.from(node.childNodes, plainText).join('');
+    if (node.matches('sup.footnote-ref')) return `[${text}]`;
+    if (node.dataset.footnoteNumber) text = `[${node.dataset.footnoteNumber}] ` + text.replace(/^\s+/, '').replace(/\n+$/, '');
     if (['TD', 'TH'].includes(node.tagName)) text += '\t';
     else if (node.tagName === 'TR') text = text.replace(/\t$/, '') + '\n';
     else if (['P', 'PRE', 'UL', 'OL', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(node.tagName)) text += '\n\n';
@@ -365,10 +465,22 @@
       BLOCKQUOTE: 'border-left:3px solid #b7b7b7;padding-left:12px;margin-left:12px',
       STRONG: 'font-weight:bold', EM: 'font-style:italic', S: 'text-decoration:line-through'
     };
+    // Alerts and footnotes are recognised by class, so collect their styles before classes go.
+    const alertColors = { note: '#0969da', tip: '#1a7f37', important: '#8250df', warning: '#9a6700', caution: '#d1242f' };
+    const classStyles = new Map();
+    rich.querySelectorAll('.markdown-alert').forEach(alert => {
+      const color = alertColors[/\bmarkdown-alert-(note|tip|important|warning|caution)\b/.exec(alert.className)?.[1]] || '#57606a';
+      classStyles.set(alert, `border-left:4px solid ${color};padding:4px 12px;margin:0 0 12px`);
+      alert.querySelectorAll(':scope > .markdown-alert-title').forEach(title => classStyles.set(title, `font-weight:bold;color:${color}`));
+    });
+    rich.querySelectorAll('section.footnotes').forEach(section => classStyles.set(section, 'border-top:1px solid #d0d7de;margin-top:16px;padding-top:8px;font-size:smaller;color:#57606a'));
     for (const node of rich.querySelectorAll('*')) {
       const alignment = node.style.textAlign;
       node.removeAttribute('style');
       if (styles[node.tagName]) node.setAttribute('style', styles[node.tagName]);
+      if (classStyles.has(node)) node.setAttribute('style', classStyles.get(node));
+      // In-document footnote anchors mean nothing after pasting; the number is enough.
+      if (node.matches('a[data-footnote-ref]')) { node.replaceWith(...node.childNodes); continue; }
       if (['TD', 'TH'].includes(node.tagName) && ['left', 'right', 'center'].includes(alignment)) {
         node.style.textAlign = alignment; node.setAttribute('align', alignment);
       }
