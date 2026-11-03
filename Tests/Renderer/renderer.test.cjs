@@ -4,11 +4,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const web = path.resolve(__dirname, '../../Sources/Resources/Web');
-function reader() {
-  const dom = new JSDOM('<!doctype html><main id="document"></main>', { runScripts: 'outside-only', url: 'file:///reader/index.html' });
+function reader(options = {}) {
+  const dom = new JSDOM('<!doctype html><head></head><main id="document"></main>', { runScripts: 'outside-only', url: 'file:///reader/index.html' });
   const window = dom.window, messages = [];
   window.webkit = { messageHandlers: { reader: { postMessage: message => messages.push(message) } } };
   window.scrollTo = () => {};
+  window.scrollBy = (x, y) => { (window.scrolledBy ||= []).push(y); };
+  // Appearance stub: tests flip `dark` and fire change listeners like WebKit does.
+  const scheme = { matches: !!options.dark, listeners: [], addEventListener(type, listener) { if (type === 'change') this.listeners.push(listener); } };
+  window.matchMedia = query => query === '(prefers-color-scheme: dark)' ? scheme : { matches: false, addEventListener() {} };
+  window.setDark = dark => { scheme.matches = dark; scheme.listeners.forEach(listener => listener({ matches: dark })); };
   window.HTMLElement.prototype.scrollIntoView = () => {};
   for (const file of ['vendor/markdown-it.min.js', 'vendor/markdown-it-footnote.min.js', 'vendor/katex.min.js', 'vendor/highlight.min.js', 'html-policy.js', 'renderer.js']) window.eval(fs.readFileSync(path.join(web, file), 'utf8'));
   const root = window.document.getElementById('document');
@@ -658,4 +663,189 @@ test('many identical headings get unique ids in linear time', () => {
   r.render('# A\n\n# A\n\n# A-1\n\n# A');
   assert.deepEqual(Array.from(r.root.querySelectorAll('h1'), h => h.id), ['a', 'a-1', 'a-1-1', 'a-2']);
   r.close();
+});
+
+// Mermaid diagrams (T-0022). A stub stands in for vendor/mermaid.min.js; the real bundle is smoke-tested last.
+function mermaidStub(options = {}) {
+  const calls = [];
+  return { calls, renders: () => calls.filter(call => call.type === 'render'),
+    initialize(config) { calls.push({ type: 'initialize', config: JSON.parse(JSON.stringify(config)) }); },
+    async render(id, source) {
+      calls.push({ type: 'render', id, source });
+      if (options.leaveTemp) { const temp = options.document.createElement('div'); temp.id = 'd' + id; options.document.body.append(temp); }
+      if (options.block) await options.block;
+      if (/\bbad\b/.test(source)) throw new Error(options.message || 'Parse error on line 2: bad');
+      const label = source.split('\n')[1]?.trim() || '';
+      return { svg: `<svg id="${id}" width="100%" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" style="max-width: 320px;" role="graphics-document"><style>#${id} .node{fill:red}</style><g><text>Label ${label.replace(/[<&]/g, '')}</text></g></svg>` };
+    } };
+}
+const mermaidScripts = r => r.window.document.querySelectorAll('script[src="vendor/mermaid.min.js"]');
+function loadMermaid(r, stub, event = 'load') {
+  const scripts = mermaidScripts(r);
+  assert.equal(scripts.length, 1, 'exactly one Mermaid loader');
+  if (stub) r.window.mermaid = stub;
+  scripts[0].dispatchEvent(new r.window.Event(event));
+}
+const settled = r => r.window.mdview.diagramsSettled();
+const figuresOf = r => Array.from(r.root.querySelectorAll('figure.mermaid'));
+test('mermaid fences become nonce-tagged figures with the exact source; other fences unchanged', () => {
+  const r = reader(), source = 'graph TD\n  A["a < b & c"] --> B\n\n  B --> C\n';
+  r.render('```mermaid\n' + source + '```\n\n~~~ MERMAID\nsequenceDiagram\n  A->>B: hi\n~~~\n\n- item\n\n  ```mermaid\n  graph LR\n    X-->Y\n  ```\n\n> ```mermaid\n> pie\n>   "a" : 1\n> ```\n\n```js\nlet x = 1;\n```\n\n```mermaidx\nnot a diagram\n```');
+  const figures = figuresOf(r);
+  assert.equal(figures.length, 4);
+  const nonce = figures[0].dataset.mermaid;
+  assert.match(nonce, /^[0-9a-f]{16,}$/);
+  for (const figure of figures) {
+    assert.equal(figure.dataset.mermaid, nonce); assert.equal(figure.dataset.state, 'pending');
+    assert.deepEqual(Array.from(figure.children, child => `${child.tagName}.${child.className}`), ['BUTTON.copy-code', 'DIV.mermaid-svg', 'FIGCAPTION.mermaid-error', 'PRE.mermaid-source']);
+    assert.equal(figure.querySelector('figcaption').hidden, true);
+  }
+  assert.equal(figures[0].querySelector('pre code').textContent, source);
+  assert.equal(figures[1].querySelector('pre code').textContent, 'sequenceDiagram\n  A->>B: hi\n');
+  assert.ok(figures[2].closest('li')); assert.equal(figures[2].querySelector('pre code').textContent, 'graph LR\n  X-->Y\n');
+  assert.ok(figures[3].closest('blockquote')); assert.equal(figures[3].querySelector('pre code').textContent, 'pie\n  "a" : 1\n');
+  assert.deepEqual(Array.from(r.root.querySelectorAll('.code-block code'), code => code.textContent), ['let x = 1;\n', 'not a diagram\n']);
+  const other = reader(); other.render('```mermaid\ngraph TD\n```');
+  assert.notEqual(figuresOf(other)[0].dataset.mermaid, nonce, 'nonce is random per page');
+  other.close(); r.close();
+});
+test('Mermaid loads lazily: no script without diagrams and one loader across renders', () => {
+  const r = reader(); r.render('# Plain\n\n```js\nx\n```\n\nText mentioning mermaid.');
+  assert.equal(mermaidScripts(r).length, 0); assert.equal(r.window.mermaid, undefined);
+  r.render('```mermaid\ngraph TD\n  A-->B\n```'); r.render('```mermaid\ngraph TD\n  A-->C\n```');
+  assert.equal(mermaidScripts(r).length, 1); r.close();
+});
+test('a failed or empty Mermaid load leaves every diagram as visible source with an error', async () => {
+  for (const [event, stub] of [['error', null], ['load', null], ['load', { render: 'not a function' }]]) {
+    const r = reader(); r.render('```mermaid\ngraph TD\n  A-->B\n```\n\n```mermaid\npie\n```');
+    loadMermaid(r, stub, event); await settled(r);
+    for (const figure of figuresOf(r)) {
+      assert.equal(figure.dataset.state, 'error', event);
+      assert.equal(figure.querySelector('figcaption').hidden, false);
+      assert.match(figure.querySelector('figcaption').textContent, /^Diagram could not be rendered: \S/);
+      assert.ok(figure.querySelector('pre code').textContent.length > 0);
+      assert.equal(figure.querySelector('svg'), null);
+    }
+    r.close();
+  }
+});
+test('rendered diagrams get a rem-sized SVG, hidden source, strict settings and no leftovers', async () => {
+  const r = reader(), stub = mermaidStub({ leaveTemp: true, document: r.window.document });
+  r.render('Intro\n\n```mermaid\ngraph TD\n  A-->B\n```');
+  loadMermaid(r, stub); await settled(r);
+  const figure = figuresOf(r)[0], svg = figure.querySelector('.mermaid-svg > svg');
+  assert.equal(figure.dataset.state, 'rendered'); assert.equal(figure.dataset.theme, 'default');
+  assert.ok(svg); assert.equal(svg.getAttribute('width'), null); assert.equal(svg.getAttribute('height'), null);
+  assert.equal(svg.style.width, '20rem'); assert.equal(svg.style.maxWidth, '100%'); assert.equal(svg.style.height, 'auto');
+  assert.equal(figure.querySelector('figcaption').hidden, true);
+  const config = stub.calls.find(call => call.type === 'initialize').config;
+  assert.equal(config.startOnLoad, false); assert.equal(config.securityLevel, 'strict');
+  assert.equal(config.suppressErrorRendering, true); assert.equal(config.theme, 'default'); assert.equal(config.layout, 'dagre');
+  for (const key of ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges', 'themeCSS']) assert.ok(config.secure.includes(key), key);
+  assert.match(config.fontFamily, /-apple-system/);
+  const [call] = stub.renders();
+  assert.match(call.id, new RegExp(`^mdview-mermaid-${figure.dataset.mermaid}-\\d+-0$`));
+  assert.equal(call.source, 'graph TD\n  A-->B\n');
+  assert.equal(r.window.document.querySelector('body > [id^="dmdview-mermaid"]'), null, 'temporary Mermaid container removed');
+  r.close();
+});
+test('Mermaid error messages are shown as text next to the visible source', async () => {
+  const r = reader(), stub = mermaidStub({ message: 'Parse error <img src=x onerror="window.__pwned=1">' });
+  r.render('```mermaid\ngraph TD\n  bad\n```'); loadMermaid(r, stub); await settled(r);
+  const figure = figuresOf(r)[0];
+  assert.equal(figure.dataset.state, 'error');
+  assert.equal(figure.querySelector('figcaption').textContent, 'Diagram could not be rendered: Parse error <img src=x onerror="window.__pwned=1">');
+  assert.equal(figure.querySelector('img'), null); assert.equal(r.window.__pwned, undefined);
+  assert.equal(figure.querySelector('pre code').textContent, 'graph TD\n  bad\n'); r.close();
+});
+test('a render that finishes after the document changed is not applied and stops its queue', async () => {
+  let release; const block = new Promise(resolve => { release = resolve; });
+  const r = reader(), stub = mermaidStub({ block });
+  r.render('```mermaid\ngraph TD\n  A-->B\n```\n\n```mermaid\ngraph TD\n  E-->F\n```'); loadMermaid(r, stub);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(stub.renders().length, 1);
+  r.render('Replaced\n\n```mermaid\ngraph TD\n  C-->D\n```');
+  release(); await settled(r);
+  assert.deepEqual(stub.renders().map(call => call.source.split('\n')[1].trim()), ['A-->B', 'C-->D']);
+  assert.equal(r.root.querySelectorAll('svg').length, 1); assert.equal(r.root.querySelector('svg text').textContent, 'Label C-->D'); r.close();
+});
+test('unchanged diagrams re-render synchronously from the cache; repeated sources render separately', async () => {
+  const r = reader(), stub = mermaidStub(), diagram = '```mermaid\ngraph TD\n  A-->B\n```';
+  r.render(`One\n\n${diagram}\n\n${diagram}`); loadMermaid(r, stub); await settled(r);
+  const ids = stub.renders().map(call => call.id);
+  assert.equal(ids.length, 2); assert.notEqual(ids[0], ids[1]);
+  r.render(`Two\n\n${diagram}\n\n${diagram}`);
+  assert.deepEqual(figuresOf(r).map(figure => figure.dataset.state), ['rendered', 'rendered'], 'cache hit is synchronous');
+  assert.deepEqual(Array.from(r.root.querySelectorAll('svg'), svg => svg.id), ids);
+  await settled(r); assert.equal(stub.renders().length, 2); r.close();
+});
+test('switching appearance re-renders with the dark theme and switching back hits the cache', async () => {
+  const r = reader(), stub = mermaidStub();
+  r.render('```mermaid\ngraph TD\n  A-->B\n```'); loadMermaid(r, stub); await settled(r);
+  r.window.setDark(true); await settled(r);
+  const figure = figuresOf(r)[0];
+  assert.equal(figure.dataset.theme, 'dark'); assert.equal(stub.renders().length, 2);
+  assert.equal(stub.calls.filter(call => call.type === 'initialize').at(-1).config.theme, 'dark');
+  r.window.setDark(false);
+  assert.equal(figure.dataset.theme, 'default'); assert.equal(stub.renders().length, 2);
+  const dark = reader({ dark: true }), darkStub = mermaidStub();
+  dark.render('```mermaid\ngraph TD\n  A-->B\n```'); loadMermaid(dark, darkStub); await settled(dark);
+  assert.equal(figuresOf(dark)[0].dataset.theme, 'dark'); dark.close(); r.close();
+});
+test('copying a diagram gives fenced Markdown source once and never SVG markup', async () => {
+  const r = reader(), stub = mermaidStub(), source = 'graph TD\n  A["x ``` y"]-->B\n';
+  r.render('Before\n\n```mermaid\n' + source + '```\n\nAfter'); loadMermaid(r, stub); await settled(r);
+  const all = clipboard(r);
+  assert.equal(all['text/plain'], 'Before\n\n````mermaid\n' + source + '````\n\nAfter');
+  for (const forbidden of ['<svg', '<style', 'foreignObject', 'Label', 'Copy']) assert.ok(!all['text/html'].includes(forbidden), forbidden);
+  assert.ok(all['text/html'].includes('````mermaid'));
+  const label = r.root.querySelector('svg text').firstChild;
+  assert.equal(clipboard(r, label, label)['text/plain'], '````mermaid\n' + source + '````');
+  r.window.getSelection().removeAllRanges();
+  figuresOf(r)[0].querySelector('button').click();
+  assert.equal(r.messages.at(-1).type, 'copy'); assert.equal(r.messages.at(-1).text, source); r.close();
+});
+test('find ignores diagram labels and source', async () => {
+  const r = reader(), stub = mermaidStub();
+  r.render('Visible zebra text\n\n```mermaid\ngraph TD\n  zebra-->giraffe\n```');
+  assert.equal(r.window.mdview.find('giraffe', 1, true).count, 0, 'pending source is not searchable');
+  loadMermaid(r, stub); await settled(r);
+  assert.equal(r.window.mdview.find('zebra', 1, true).count, 1);
+  assert.equal(r.window.mdview.find('giraffe', 1, true).count, 0); r.close();
+});
+test('oversized diagrams fail explicitly without loading Mermaid', async () => {
+  const r = reader(), source = 'graph TD\n' + 'A-->B\n'.repeat(9000);
+  r.render('```mermaid\n' + source + '```'); await settled(r);
+  const figure = figuresOf(r)[0];
+  assert.equal(figure.dataset.state, 'error'); assert.match(figure.querySelector('figcaption').textContent, /50 000 characters/);
+  assert.equal(figure.querySelector('pre code').textContent, source); assert.equal(mermaidScripts(r).length, 0); r.close();
+});
+test('options.diagrams === false keeps Mermaid fences as plain source code', () => {
+  const r = reader(); r.render('```mermaid\ngraph TD\n  A-->B\n```', { diagrams: false });
+  assert.equal(figuresOf(r).length, 0); assert.equal(mermaidScripts(r).length, 0);
+  assert.equal(r.root.querySelector('code.language-mermaid').textContent, 'graph TD\n  A-->B\n'); r.close();
+});
+test('diagrams in view render first, and a diagram above the viewport keeps the reading position', async () => {
+  const r = reader(), stub = mermaidStub();
+  r.render('```mermaid\ngraph TD\n  Below\n```\n\n```mermaid\ngraph TD\n  Visible\n```\n\n```mermaid\ngraph TD\n  Above\n```');
+  const [below, visible, above] = figuresOf(r);
+  below.getBoundingClientRect = () => ({ top: 2000, bottom: 2100, height: 100 });
+  visible.getBoundingClientRect = () => ({ top: 100, bottom: 200, height: 100 });
+  above.getBoundingClientRect = () => above.dataset.state === 'rendered' ? { top: -600, bottom: -300, height: 300 } : { top: -600, bottom: -500, height: 100 };
+  loadMermaid(r, stub); await settled(r);
+  assert.deepEqual(stub.renders().map(call => call.source.split('\n')[1].trim()), ['Visible', 'Below', 'Above']);
+  assert.deepEqual(r.window.scrolledBy, [200]); r.close();
+});
+test('the vendored Mermaid bundle loads as a classic script and parses valid and invalid diagrams', async () => {
+  // jsdom has no SVG layout (getBBox), so full rendering is covered by the GUI checks.
+  const dom = new JSDOM('<!doctype html><body></body>', { runScripts: 'dangerously', url: 'file:///reader/index.html' });
+  const window = dom.window, script = window.document.createElement('script');
+  script.textContent = fs.readFileSync(path.join(web, 'vendor/mermaid.min.js'), 'utf8');
+  window.document.head.append(script);
+  assert.equal(typeof window.mermaid.render, 'function');
+  window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true, layout: 'dagre' });
+  assert.equal((await window.mermaid.parse('graph TD\n  A-->B')).diagramType, 'flowchart-v2');
+  assert.equal((await window.mermaid.parse('sequenceDiagram\n  A->>B: hi')).diagramType, 'sequence');
+  await assert.rejects(window.mermaid.parse('graph TD\n  A-->'), /Parse error/);
+  window.close();
 });

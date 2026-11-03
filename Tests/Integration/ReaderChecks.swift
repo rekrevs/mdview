@@ -135,6 +135,7 @@ final class Checks: NSObject, NSApplicationDelegate {
         check(ReaderResources.indexURL!.path.contains(".app/Contents/Resources/"),"resources resolved from relocated app, not build tree")
         check(try await bool(reader,"document.querySelectorAll('.katex').length===5"),"inline, styled, block, fenced and table math render")
         check(try await bool(reader,"document.querySelectorAll('mtr').length===2"),"matrix retains both rows")
+        check(try await bool(reader,"window.mermaid===undefined && !document.querySelector('script[src*=mermaid]')"),"a document without diagrams never loads Mermaid")
         check(try await bool(reader,"document.querySelectorAll('input[type=checkbox]').length===2 && document.querySelectorAll('input:checked').length===1"),"task list states retained")
         check(try await bool(reader,"document.querySelector('blockquote h2')!==null && document.querySelector('blockquote pre').textContent.includes('nested')"),"nested heading/list/code retained")
         check(try await bool(reader,"document.querySelector('code.language-python').textContent==='    first_line = 1\\n    second_line = 2\\n'"),"code whitespace exact")
@@ -340,6 +341,92 @@ final class Checks: NSObject, NSApplicationDelegate {
         check(local==other && fragment=="sök","HTML relative .markdown link decodes path and fragment like Markdown")
         try await clickElement("a[href=\"#user-content-html-target\"]")
         check(try await inView("#user-content-html-target"),"HTML anchor link scrolls to the prefixed author id")
+        // Mermaid diagrams (T-0022): real WebKit layout, strict security, theme, zoom, copy, find.
+        func diagramsSettled(_ seconds: Double = 30) async throws {
+            _ = try await js(reader,"window.__diagramsSettled=false; window.mdview.diagramsSettled().then(()=>{window.__diagramsSettled=true}); true")
+            for _ in 0..<Int(seconds*10) { if try await bool(reader,"window.__diagramsSettled===true") { return }; await delay() }
+            throw NSError(domain:"ReaderChecks",code:3,userInfo:[NSLocalizedDescriptionKey:"Timed out: diagrams settled"])
+        }
+        let diagramFiller=(1...25).map{"Diagram filler paragraph \($0)."}.joined(separator:"\n\n")
+        let flowSource="graph TD\n  Start[Begin here] --> Decide{Pick one}\n  Decide -->|yes| Yak[Yakfox label]\n  Decide -->|no| Done[Finish]\n"
+        let mermaidDoc="# Diagrams\n\n```mermaid\n"+flowSource+"```\n\n```mermaid\nsequenceDiagram\n  Alice->>Bob: Hello Bob\n  Bob-->>Alice: Hi Alice\n```\n\n```mermaid\ngraph TD\n  A-->\n```\n\n```mermaid\n%%{init: {\"securityLevel\":\"loose\"}}%%\ngraph TD\n  Attack[\"<img src=x onerror=window.__mermaidPwned=1>\"] --> Target\n  click Attack \"javascript:window.__mermaidPwned=1\"\n  click Target href \"javascript:window.__mermaidPwned=1\"\n```\n\n"+diagramFiller
+        let mermaidStart=Date()
+        reader.updateMarkdown(mermaidDoc)
+        try await until("mermaid figures") { try await self.bool(reader,"document.querySelectorAll('figure.mermaid').length===4") }
+        try await diagramsSettled()
+        print("4 diagrams settled in \(Date().timeIntervalSince(mermaidStart)) s including the first Mermaid load")
+        let states=try await js(reader,"Array.from(document.querySelectorAll('figure.mermaid'),f=>f.dataset.state+'|'+f.dataset.theme).join(',')") as? String ?? ""
+        print("MERMAID STATES \(states)")
+        check(states=="rendered|default,rendered|default,error|default,rendered|default","flowchart, sequence and strict attack diagram render; invalid diagram is an error")
+        check(try await bool(reader,"typeof window.mermaid?.render==='function' && document.querySelectorAll('script[src=\"vendor/mermaid.min.js\"]').length===1"),"Mermaid loaded once from the bundled vendor directory")
+        check(try await bool(reader,"[0,1,3].every(i=>{const s=document.querySelectorAll('figure.mermaid')[i].querySelector('.mermaid-svg > svg');return s&&s.getBBox().width>0&&s.getBoundingClientRect().height>0})"),"valid diagrams are laid-out SVGs with nonzero bounding boxes")
+        check(try await bool(reader,"(()=>{const f=document.querySelectorAll('figure.mermaid')[2],c=f.querySelector('figcaption'),p=f.querySelector('pre.mermaid-source');return !c.hidden&&c.innerText.startsWith('Diagram could not be rendered: ')&&p.getBoundingClientRect().height>0&&p.innerText.includes('A-->')&&!f.querySelector('svg')})()"),"invalid diagram shows a visible error and its source")
+        check(try await bool(reader,"getComputedStyle(document.querySelectorAll('figure.mermaid')[0].querySelector('pre.mermaid-source')).display==='none'"),"rendered diagram hides its source")
+        let bodyChildren=try await js(reader,"Array.from(document.body.children,n=>n.tagName+'#'+n.id).join(',')") as? String ?? ""
+        print("BODY CHILDREN \(bodyChildren)")
+        check(bodyChildren=="MAIN#document","no temporary Mermaid elements remain in the page body")
+        var diagramOpened:[URL]=[]
+        reader.openExternal={diagramOpened.append($0);return true}
+        let svgLinks=try await js(reader,"Array.from(document.querySelectorAll('figure.mermaid svg a'),a=>a.getAttribute('href')||a.getAttribute('xlink:href')).join(',')") as? String ?? "?"
+        _ = try await js(reader,"document.querySelectorAll('figure.mermaid svg *').forEach(n=>n.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})))")
+        await delay(0.5)
+        print("MERMAID LINKS [\(svgLinks)] opened=\(diagramOpened) error=\(reader.errorMessage ?? "nil")")
+        check(diagramOpened.isEmpty,"clicking every element of the diagrams opens nothing")
+        reader.errorMessage=nil; reader.openExternal={external=$0;return true}
+        let attack=try await js(reader,"(()=>{const f=document.querySelectorAll('figure.mermaid')[3];return [window.__mermaidPwned===undefined,!document.querySelector('a[href^=javascript],[href*=\"javascript:\"],[onerror],[onclick]'),!f.querySelector('img[onerror],script'),f.querySelector('svg').textContent.length>0].join('|')})()") as? String ?? ""
+        print("MERMAID ATTACK \(attack)")
+        check(attack=="true|true|true|true","init directive cannot loosen strict mode: no javascript: links, handlers or script execution")
+        let foreign=try await js(reader,"performance.getEntriesByType('resource').map(e=>e.name).filter(n=>!n.startsWith('file:')&&!n.startsWith('mdview-image:'))") as? [String] ?? ["?"]
+        // WebKit records no resource-timing entries for file: loads, so check the resolved script URL.
+        let bundledScript=try await bool(reader,"(()=>{const u=document.querySelector('script[src=\"vendor/mermaid.min.js\"]').src;return u.startsWith('file:')&&u.includes('.app/Contents/Resources/')})()")
+        print("MERMAID RESOURCES foreign=\(foreign) bundled=\(bundledScript)")
+        check(foreign.isEmpty && bundledScript,"diagrams cause no network requests; Mermaid comes from the app bundle")
+        _ = try await js(reader,"window.scrollTo(0,0)"); await delay(0.2)
+        try await snapshot(reader,"mermaid-light")
+        let nodeFill="getComputedStyle(document.querySelector('figure.mermaid .mermaid-svg svg .node rect, figure.mermaid .mermaid-svg svg .node polygon, figure.mermaid .mermaid-svg svg .node path')).fill"
+        let lightFill=try await js(reader,nodeFill) as? String ?? ""
+        w.appearance=NSAppearance(named:.darkAqua)
+        try await until("dark diagrams") { try await self.bool(reader,"Array.from(document.querySelectorAll('figure.mermaid')).every(f=>f.dataset.theme==='dark')") }
+        try await diagramsSettled()
+        let darkFill=try await js(reader,nodeFill) as? String ?? ""
+        print("MERMAID FILL light=\(lightFill) dark=\(darkFill)")
+        check(!lightFill.isEmpty && lightFill != darkFill,"dark appearance re-renders diagrams with the dark theme")
+        try await snapshot(reader,"mermaid-dark")
+        w.appearance=NSAppearance(named:.aqua)
+        try await until("light diagrams") { try await self.bool(reader,"Array.from(document.querySelectorAll('figure.mermaid')).every(f=>f.dataset.theme==='default')") }
+        check(try await js(reader,nodeFill) as? String == lightFill,"switching back to light restores the light diagrams")
+        let width1=try await js(reader,"document.querySelector('figure.mermaid svg').getBoundingClientRect().width") as? Double ?? 0
+        reader.zoomIn(); await delay(0.3)
+        let width2=try await js(reader,"document.querySelector('figure.mermaid svg').getBoundingClientRect().width") as? Double ?? 0
+        reader.resetZoom(); await delay(0.2)
+        print("MERMAID ZOOM \(width1) -> \(width2)")
+        check(width1>0 && abs(width2/width1-1.1)<0.02,"zoom scales diagram width with the text")
+        _ = try await js(reader,"(()=>{const range=document.createRange();range.selectNodeContents(document.querySelector('main'));const s=getSelection();s.removeAllRanges();s.addRange(range);})()")
+        let diagramCopy=await copy(reader)
+        let diagramRich=board.string(forType:.html) ?? ""
+        check(diagramCopy.contains("```mermaid\n"+flowSource+"```") && diagramCopy.components(separatedBy:"Yakfox label").count==2 && diagramCopy.components(separatedBy:"```mermaid").count==5,"native Select All + Copy gives each diagram's fenced source once")
+        check(!diagramRich.contains("<svg") && !diagramRich.contains("foreignObject") && diagramRich.contains("mermaid"),"native HTML clipboard carries diagram source, not SVG")
+        _ = try await js(reader,"(()=>{const t=Array.from(document.querySelectorAll('figure.mermaid svg *')).find(n=>n.textContent.trim()==='Yakfox label'&&!n.children.length);const r=document.createRange();r.selectNodeContents(t);getSelection().removeAllRanges();getSelection().addRange(r);})()")
+        let labelCopy=await copy(reader)
+        check(labelCopy=="```mermaid\n"+flowSource+"```","copying a selected diagram label gives that diagram's fenced source")
+        _ = try await js(reader,"getSelection().removeAllRanges()")
+        reader.findQuery="Diagram filler paragraph 2"; reader.showFind()
+        try await until("find positive control") { reader.findCount>0 }
+        reader.findQuery="Yakfox"; await delay(0.6)
+        check(reader.findCount==0,"Find ignores diagram labels and source")
+        reader.hideFind(); await delay(0.25)
+        // Forty distinct diagrams, read from the middle of the document while they render.
+        let many=(1...40).map{"Paragraph before diagram \($0).\n\n```mermaid\ngraph LR\n  N\($0)a[Node \($0)] --> N\($0)b[Next \($0)]\n  N\($0)b --> N\($0)c[Last \($0)]\n```"}.joined(separator:"\n\n")+"\n\nEnd of diagrams."
+        let manyStart=Date()
+        reader.updateMarkdown(many)
+        try await until("forty figures") { try await self.bool(reader,"document.querySelectorAll('figure.mermaid').length===40") }
+        let anchorTop=try await js(reader,"(()=>{const p=Array.from(document.querySelectorAll('main > p')).find(n=>n.textContent==='Paragraph before diagram 30.');p.scrollIntoView({block:'start'});return p.getBoundingClientRect().top})()") as? Double ?? -1
+        try await diagramsSettled(120)
+        print("40 diagrams settled in \(Date().timeIntervalSince(manyStart)) s (single warm observation)")
+        let anchorAfter=try await js(reader,"Array.from(document.querySelectorAll('main > p')).find(n=>n.textContent==='Paragraph before diagram 30.').getBoundingClientRect().top") as? Double ?? 999
+        print("MERMAID ANCHOR \(anchorTop) -> \(anchorAfter)")
+        check(try await bool(reader,"Array.from(document.querySelectorAll('figure.mermaid')).every(f=>f.dataset.state==='rendered')"),"forty diagrams all render")
+        check(abs(anchorAfter-anchorTop)<3,"diagrams rendering above the viewport keep the reading position")
         // Adversarial corpus: nothing executes, navigates, or fetches from disallowed contexts.
         var opened:[URL]=[]
         reader.openExternal={opened.append($0);return true}
@@ -394,9 +481,9 @@ final class Checks: NSObject, NSApplicationDelegate {
         try await until("csp probe error") { try await self.bool(reader,"window.__cspError===1") }
         await delay(0.3)
         check(try await bool(reader,"window.__csp===undefined"),"CSP blocks an inline onerror handler inserted directly into the page")
-        reader.updateMarkdown("Bad formula: $\\notARealCommand{x}$\n\n<script>window.injected=true</script>\n\n[javascript](javascript:alert(1))")
+        reader.updateMarkdown("Bad formula: $\\notARealCommand{x}$\n\n<script>window.__documentScript=true</script>\n\n[javascript](javascript:alert(1))")
         try await until("invalid formula fallback") { try await self.bool(reader,"document.querySelector('.math-error')!==null") }
-        check(try await bool(reader,"!window.injected && !document.querySelector('main script') && !document.querySelector('a[href^=javascript]')"),"document scripts and unsafe link schemes cannot execute")
+        check(try await bool(reader,"!window.__documentScript && !document.querySelector('main script') && !document.querySelector('a[href^=javascript]')"),"document scripts and unsafe link schemes cannot execute")
         check(reader.errorMessage==nil,"no native load errors during checks")
     }
 }

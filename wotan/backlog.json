@@ -118,7 +118,7 @@
     {
       "id": "T-0022",
       "size": "L",
-      "status": "READY",
+      "status": "DONE",
       "summary": "Render Mermaid diagrams offline"
     },
     {

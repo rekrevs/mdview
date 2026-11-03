@@ -20,12 +20,15 @@ for required in \
     "$resources/vendor/katex.min.css" \
     "$resources/vendor/highlight.min.js" \
     "$resources/vendor/markdown-it-footnote.min.js" \
+    "$resources/vendor/mermaid.min.js" \
     "$resources/vendor/manifest.json" \
     "$resources/vendor/licenses/markdown-it.txt" \
     "$resources/vendor/licenses/katex.txt" \
     "$resources/vendor/licenses/cdn-assets.txt" \
     "$resources/vendor/licenses/markdown-it-footnote.txt" \
-    "$resources/vendor/licenses/octicons.txt"; do
+    "$resources/vendor/licenses/octicons.txt" \
+    "$resources/vendor/licenses/mermaid.txt" \
+    "$resources/vendor/licenses/mermaid-bundled.txt"; do
     if [[ ! -s "$required" ]]; then
         echo "Bundle is missing a required nonempty file: $required" >&2
         exit 1
@@ -34,6 +37,16 @@ done
 [[ -x "$app/Contents/MacOS/mdview" ]]
 if [[ -z "$(find "$resources/vendor/fonts" -name '*.woff2' -type f -print -quit)" ]]; then
     echo "Bundle is missing offline KaTeX fonts." >&2
+    exit 1
+fi
+# The complete Mermaid IIFE build (not a stub or an ESM entry that needs lazy chunks).
+mermaid="$resources/vendor/mermaid.min.js"
+if (( $(stat -f %z "$mermaid") < 1000000 )) || ! grep -q 'globalThis\["mermaid"\]' "$mermaid" || ! grep -q '"12.2.0"' "$mermaid"; then
+    echo "Bundle has an incomplete Mermaid build: $mermaid" >&2
+    exit 1
+fi
+if ! grep -q 'Eclipse Public License' "$resources/vendor/licenses/mermaid-bundled.txt"; then
+    echo "Bundle is missing the license notices for components bundled in Mermaid." >&2
     exit 1
 fi
 if [[ -z "$(find "$resources/vendor/licenses" -type f -print -quit)" ]]; then

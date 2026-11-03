@@ -6,7 +6,7 @@
   const post = message => window.webkit?.messageHandlers?.reader?.postMessage(message);
   const md = window.markdownit({ html: true, linkify: true, typographer: false });
   const escape = md.utils.escapeHtml;
-  let lastMarkdown = null, lastBaseURL = null, documentURL = null, headingList = [];
+  let lastMarkdown = null, lastBaseURL = null, lastDiagrams = true, documentURL = null, headingList = [];
   let findQuery = '', findRanges = [], findIndex = -1;
 
   function mathHTML(source, display, originalSource) {
@@ -85,6 +85,13 @@
   }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
   md.renderer.rules.math_block = (tokens, index) => mathHTML(tokens[index].content, true) + '\n';
 
+  // Trusted diagram markup. The per-page nonce marks figures this renderer produced; author HTML
+  // can never carry class or data-* attributes, and hydration/copy only accept the nonce.
+  const diagramNonce = Array.from(window.crypto.getRandomValues(new Uint8Array(12)), byte => byte.toString(16).padStart(2, '0')).join('');
+  function diagramHTML(source) {
+    return `<figure class="mermaid" data-mermaid="${diagramNonce}" data-state="pending"><button class="copy-code" type="button" aria-label="Copy code">Copy</button><div class="mermaid-svg"></div><figcaption class="mermaid-error" hidden></figcaption><pre class="mermaid-source"><code>${escape(source)}</code></pre></figure>\n`;
+  }
+
   function codeHTML(source, language) {
     let highlighted = escape(source);
     if (language && window.hljs.getLanguage(language)) {
@@ -92,10 +99,13 @@
     }
     return `<div class="code-block"><button class="copy-code" type="button" aria-label="Copy code">Copy</button><pre><code${language ? ` class="language-${escape(language)}"` : ''}>${highlighted}</code></pre></div>\n`;
   }
-  md.renderer.rules.fence = (tokens, index) => {
+  md.renderer.rules.fence = (tokens, index, options, env) => {
     const token = tokens[index];
     const language = token.info.trim().split(/\s+/)[0].toLowerCase();
-    return language === 'math' ? mathHTML(token.content, true) + '\n' : codeHTML(token.content, language);
+    if (language === 'math') return mathHTML(token.content, true) + '\n';
+    // env.diagrams === false (e.g. a future Quick Look preview) keeps diagrams as plain source.
+    if (language === 'mermaid' && env.diagrams !== false) return diagramHTML(token.content);
+    return codeHTML(token.content, language);
   };
   md.renderer.rules.code_block = (tokens, index) => codeHTML(tokens[index].content, '');
 
@@ -326,16 +336,163 @@
     findRanges = []; findIndex = -1;
   }
 
+  // Mermaid diagrams. The 5.5 MB bundle is injected once, only when a document contains a
+  // diagram. Rendering runs one diagram per macrotask, visible ones first, and results are
+  // cached per theme and source so reloads and theme switches back are synchronous.
+  const DIAGRAM_SOURCE_LIMIT = 50000, DIAGRAM_CACHE_SIZE = 64;
+  const diagramCache = new Map();
+  let diagramGeneration = 0, mermaidLoad = null, colorScheme = null, renderChain = Promise.resolve();
+  let diagramsIdle = true, diagramWaiters = [], scrollRemainder = 0;
+  const diagramFigures = () => Array.from(root.querySelectorAll('figure.mermaid[data-mermaid]')).filter(figure => figure.dataset.mermaid === diagramNonce);
+  const diagramSource = figure => figure.querySelector(':scope > pre > code')?.textContent ?? '';
+  const mermaidConfig = theme => ({
+    startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true, theme,
+    layout: 'dagre', // Mermaid 12 defaults to ELK; dagre matches GitHub's layout.
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    // Keys a diagram's own %%{init}%% directive or front matter may not override.
+    secure: ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges', 'themeCSS']
+  });
+  function loadMermaid() {
+    mermaidLoad ||= new Promise(resolve => {
+      const script = document.createElement('script');
+      const finish = failure => {
+        const api = window.mermaid;
+        if (!failure && typeof api?.render === 'function' && typeof api.initialize === 'function') resolve({ api });
+        else resolve({ error: failure || 'Mermaid did not start; it needs macOS with Safari 17.4 or later.' });
+      };
+      script.addEventListener('load', () => finish(), { once: true });
+      script.addEventListener('error', () => finish('the bundled Mermaid library could not be loaded.'), { once: true });
+      script.src = 'vendor/mermaid.min.js';
+      document.head.append(script);
+    });
+    return mermaidLoad;
+  }
+  function cacheDiagram(key, result) {
+    diagramCache.delete(key); diagramCache.set(key, result);
+    while (diagramCache.size > DIAGRAM_CACHE_SIZE) diagramCache.delete(diagramCache.keys().next().value);
+  }
+  function applyDiagram(figure, result, theme, keepPosition) {
+    const before = keepPosition ? figure.getBoundingClientRect() : null;
+    const slot = figure.querySelector(':scope > .mermaid-svg'), caption = figure.querySelector(':scope > figcaption');
+    const template = document.createElement('template');
+    if (result.svg) template.innerHTML = result.svg;
+    const svg = template.content.firstElementChild?.tagName.toLowerCase() === 'svg' ? template.content.firstElementChild : null;
+    if (svg) {
+      // Size in rem so page zoom scales diagrams, and never wider than the column.
+      const box = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+      svg.removeAttribute('width'); svg.removeAttribute('height');
+      if (box.length === 4 && box[2] > 0) svg.style.width = `${box[2] / 16}rem`;
+      svg.style.maxWidth = '100%'; svg.style.height = 'auto';
+      slot.replaceChildren(svg);
+      caption.hidden = true; caption.textContent = '';
+      figure.dataset.state = 'rendered';
+    } else {
+      slot.replaceChildren();
+      caption.textContent = `Diagram could not be rendered: ${result.error || 'Mermaid returned no SVG.'}`;
+      caption.hidden = false; figure.dataset.state = 'error';
+    }
+    figure.dataset.theme = theme;
+    // A diagram entirely above the viewport must not move the text being read. WebKit's own
+    // scroll anchoring may already have compensated in whole pixels, so correct only the
+    // remaining shift, carrying sub-pixel remainders so they cannot accumulate into drift.
+    if (before && before.bottom <= 0) {
+      scrollRemainder += figure.getBoundingClientRect().bottom - before.bottom;
+      const whole = Math.round(scrollRemainder);
+      if (whole) { window.scrollBy(0, whole); scrollRemainder -= whole; }
+    }
+  }
+  function renderDiagram(api, item) {
+    const run = async () => {
+      try {
+        api.initialize(mermaidConfig(item.theme));
+        const { svg } = await api.render(item.id, item.source);
+        return { svg: String(svg) };
+      } catch (error) {
+        return { error: String(error?.message || error || 'unknown error').trim().slice(0, 2000) };
+      } finally {
+        // Mermaid renders inside temporary body elements; remove any that remain.
+        for (const id of [item.id, `d${item.id}`, `i${item.id}`]) {
+          const node = document.getElementById(id);
+          if (node && !root.contains(node)) node.remove();
+        }
+      }
+    };
+    // initialize + render pairs never interleave, even across generations.
+    const result = renderChain.then(run);
+    renderChain = result;
+    return result.then(value => { cacheDiagram(item.key, value); return value; });
+  }
+  function settleDiagrams(generation) {
+    if (generation !== diagramGeneration) return;
+    diagramsIdle = true;
+    const waiters = diagramWaiters; diagramWaiters = [];
+    waiters.forEach(resolve => resolve(true));
+  }
+  function hydrateDiagrams() {
+    const generation = ++diagramGeneration, figures = diagramFigures();
+    scrollRemainder = 0;
+    if (!figures.length) { settleDiagrams(generation); return; }
+    if (!colorScheme && (colorScheme = window.matchMedia?.('(prefers-color-scheme: dark)') || null)) {
+      colorScheme.addEventListener?.('change', () => { if (diagramFigures().length) hydrateDiagrams(); });
+    }
+    const theme = colorScheme?.matches ? 'dark' : 'default', occurrences = new Map(), queue = [];
+    figures.forEach((figure, index) => {
+      const source = diagramSource(figure), occurrence = occurrences.get(source) || 0;
+      occurrences.set(source, occurrence + 1);
+      if (source.length > DIAGRAM_SOURCE_LIMIT) {
+        applyDiagram(figure, { error: 'the source is longer than 50 000 characters.' }, theme, false); return;
+      }
+      // Repeated identical sources render separately so their SVG ids stay unique.
+      const key = `${theme}\n${occurrence}\n${source}`, cached = diagramCache.get(key);
+      if (cached) { cacheDiagram(key, cached); applyDiagram(figure, cached, theme, false); return; }
+      queue.push({ figure, source, key, theme, id: `mdview-mermaid-${diagramNonce}-${generation}-${index}` });
+    });
+    if (!queue.length) { settleDiagrams(generation); return; }
+    diagramsIdle = false;
+    // Ranked at each step, after the reading position is restored and as the reader scrolls:
+    // visible diagrams first, then those below the viewport, then those above it.
+    const rank = item => {
+      const rect = item.figure.getBoundingClientRect();
+      return rect.bottom < 0 ? [2, -rect.bottom] : rect.top > window.innerHeight ? [1, rect.top] : [0, rect.top];
+    };
+    const next = () => {
+      let best = -1, bestRank = null;
+      queue.forEach((item, index) => {
+        const value = rank(item);
+        if (!bestRank || value[0] < bestRank[0] || (value[0] === bestRank[0] && value[1] < bestRank[1])) { best = index; bestRank = value; }
+      });
+      return best < 0 ? undefined : queue.splice(best, 1)[0];
+    };
+    loadMermaid().then(loaded => {
+      if (generation !== diagramGeneration) return;
+      if (loaded.error) {
+        queue.forEach(item => applyDiagram(item.figure, { error: loaded.error }, theme, true));
+        settleDiagrams(generation); return;
+      }
+      const step = () => {
+        if (generation !== diagramGeneration) return;
+        const item = next();
+        if (!item) { settleDiagrams(generation); return; }
+        renderDiagram(loaded.api, item).then(result => {
+          if (generation === diagramGeneration && item.figure.isConnected) applyDiagram(item.figure, result, item.theme, true);
+          window.setTimeout(step, 0);
+        });
+      };
+      step();
+    });
+  }
+
   function render(markdown, options = {}) {
     markdown = String(markdown ?? '');
     const baseURL = options.baseURL || '';
     documentURL = options.documentURL || null;
-    if (markdown === lastMarkdown && baseURL === lastBaseURL) {
+    const diagrams = options.diagrams !== false;
+    if (markdown === lastMarkdown && baseURL === lastBaseURL && diagrams === lastDiagrams) {
       post({ type: 'rendered' }); return { headings: headingList, changed: false };
     }
     const oldScroll = window.scrollY;
     clearFind();
-    const env = {};
+    const env = { diagrams };
     // Parse into an inert template and resolve every image before anything can fetch.
     const template = document.createElement('template');
     template.innerHTML = md.render(markdown, env);
@@ -352,7 +509,8 @@
       else source.removeAttribute('srcset');
     });
     root.replaceChildren(template.content); // Moving the fragment avoids per-node spreading.
-    lastMarkdown = markdown; lastBaseURL = baseURL;
+    lastMarkdown = markdown; lastBaseURL = baseURL; lastDiagrams = diagrams;
+    hydrateDiagrams(); // Cached diagrams appear before the reading position is restored.
     window.scrollTo(0, oldScroll);
     if (findQuery) find(findQuery, 1, true);
     post({ type: 'headings', headings: headingList });
@@ -388,7 +546,8 @@
         segments.push({ node, start: text.length, end: text.length + node.data.length }); text += node.data; return;
       }
       if (node.nodeType !== Node.ELEMENT_NODE) return;
-      if (node.matches('button,input,[data-math],.sr-only')) { text += '\n'; return; }
+      // Formula internals, diagram labels and diagram source are never find matches.
+      if (node.matches('button,input,[data-math],[data-mermaid],.sr-only')) { text += '\n'; return; }
       const block = blocks.has(node.tagName);
       if (block && text && !text.endsWith('\n')) text += '\n';
       for (const child of node.childNodes) visit(child);
@@ -437,11 +596,12 @@
     const documentRange = document.createRange(); documentRange.selectNodeContents(root);
     if (range.compareBoundaryPoints(Range.START_TO_START, documentRange) < 0) range.setStart(root, 0);
     if (range.compareBoundaryPoints(Range.END_TO_END, documentRange) > 0) range.setEnd(root, root.childNodes.length);
-    // Selecting any visual part of a formula copies that formula's source once.
+    // Selecting any visual part of a formula or diagram copies its source once.
     for (const boundary of ['start', 'end']) {
       const node = range[boundary + 'Container'];
-      const math = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest('[data-math]');
-      if (math) boundary === 'start' ? range.setStartBefore(math) : range.setEndAfter(math);
+      const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      const atomic = element?.closest('figure[data-mermaid]') || element?.closest('[data-math]');
+      if (atomic) boundary === 'start' ? range.setStartBefore(atomic) : range.setEndAfter(atomic);
     }
     const holder = document.createElement('div');
     let fragment = range.cloneContents();
@@ -454,6 +614,15 @@
       fragment = wrapper; context = context.parentElement;
     }
     holder.append(fragment);
+    // A diagram copies as fenced Markdown source, never as SVG, style or foreignObject markup.
+    holder.querySelectorAll('figure[data-mermaid]').forEach(figure => {
+      if (figure.dataset.mermaid !== diagramNonce) return;
+      const source = diagramSource(figure);
+      const fence = '`'.repeat(Math.max(3, ...Array.from(source.matchAll(/`+/g), run => run[0].length + 1)));
+      const pre = document.createElement('pre'), code = document.createElement('code');
+      code.textContent = `${fence}mermaid\n${source}${!source || source.endsWith('\n') ? '' : '\n'}${fence}`;
+      pre.append(code); figure.replaceWith(pre);
+    });
     // Preserve the first visible ordinal when copying only the tail of a list.
     const lists = Array.from(root.querySelectorAll('ol')).filter(list => range.intersectsNode(list));
     holder.querySelectorAll('ol').forEach((copy, index) => {
@@ -560,7 +729,7 @@
   root.addEventListener('click', event => {
     const button = event.target.closest('.copy-code');
     if (button) {
-      post({ type: 'copy', text: button.parentElement.querySelector('code').textContent });
+      post({ type: 'copy', text: button.parentElement.querySelector(':scope > pre > code').textContent });
       button.textContent = 'Copied'; window.setTimeout(() => { button.textContent = 'Copy'; }, 1200); return;
     }
     const link = event.target.closest('a[href]');
@@ -571,7 +740,8 @@
       post({ type: 'link', href });
     }
   });
-  window.mdview = { render, find, scrollToHeading, markup: text => md.render(String(text ?? ''), {}), setZoom(scale) {
+  window.mdview = { render, find, scrollToHeading, markup: text => md.render(String(text ?? ''), {}),
+    diagramsSettled: () => diagramsIdle ? Promise.resolve(true) : new Promise(resolve => diagramWaiters.push(resolve)), setZoom(scale) {
     document.documentElement.style.fontSize = `${16 * Math.max(0.5, Math.min(3, Number(scale) || 1))}px`;
   } };
   post({ type: 'ready' });
