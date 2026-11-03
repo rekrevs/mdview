@@ -1,6 +1,6 @@
 {
   "version": "2.1.0",
-  "next_id": 20,
+  "next_id": 26,
   "tasks": [
     {
       "id": "T-0001",
@@ -102,6 +102,42 @@
       "size": "M",
       "status": "DONE",
       "summary": "Improve portable rich clipboard formatting and verify actual Word paste"
+    },
+    {
+      "id": "T-0020",
+      "size": "M",
+      "status": "READY",
+      "summary": "Render GitHub alerts and footnotes"
+    },
+    {
+      "id": "T-0021",
+      "size": "L",
+      "status": "READY",
+      "summary": "Render a sanitized GitHub-style HTML subset"
+    },
+    {
+      "id": "T-0022",
+      "size": "L",
+      "status": "READY",
+      "summary": "Render Mermaid diagrams offline"
+    },
+    {
+      "id": "T-0023",
+      "size": "M",
+      "status": "READY",
+      "summary": "Show YAML front matter as metadata"
+    },
+    {
+      "id": "T-0024",
+      "size": "L",
+      "status": "READY",
+      "summary": "Add a Finder Quick Look preview extension"
+    },
+    {
+      "id": "T-0025",
+      "size": "M",
+      "status": "READY",
+      "summary": "Support emoji shortcodes and light/dark image variants"
     }
   ]
 }
