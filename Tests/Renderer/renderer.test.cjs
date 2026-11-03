@@ -10,7 +10,7 @@ function reader() {
   window.webkit = { messageHandlers: { reader: { postMessage: message => messages.push(message) } } };
   window.scrollTo = () => {};
   window.HTMLElement.prototype.scrollIntoView = () => {};
-  for (const file of ['vendor/markdown-it.min.js', 'vendor/markdown-it-footnote.min.js', 'vendor/katex.min.js', 'vendor/highlight.min.js', 'renderer.js']) window.eval(fs.readFileSync(path.join(web, file), 'utf8'));
+  for (const file of ['vendor/markdown-it.min.js', 'vendor/markdown-it-footnote.min.js', 'vendor/katex.min.js', 'vendor/highlight.min.js', 'html-policy.js', 'renderer.js']) window.eval(fs.readFileSync(path.join(web, file), 'utf8'));
   const root = window.document.getElementById('document');
   return { window, root, messages, render: (text, options = {}) => window.mdview.render(text, options), close: () => window.close() };
 }
@@ -108,7 +108,9 @@ test('unsafe raw HTML is inert, unsafe link/image schemes never produce active e
   const r = reader();
   r.render('<script>window.evil = true</script>\n\n<img src=x onerror="window.evil=true">\n\n[evil](javascript:alert(1))\n\n![evil](javascript:alert(1))\n\n$\\href{javascript:alert(1)}{x}$');
   assert.equal(r.window.evil, undefined);
-  assert.equal(r.root.querySelectorAll('script,img,[onerror],a[href^="javascript:"]').length, 0); r.close();
+  // T-0021: <img> is in the GitHub subset, but only with canonical, validated attributes.
+  assert.equal(r.root.querySelectorAll('script,[onerror],a[href^="javascript:"]').length, 0);
+  assert.equal(r.root.querySelectorAll('img').length, 1); r.close();
 });
 test('local image URL resolution decodes only once and permits remote https images', () => {
   const r = reader(); r.render('![a](../fig%2520name.png) ![b](https://example.org/image.png)', { baseURL: 'file:///tmp/docs/' });
@@ -122,6 +124,7 @@ test('all saved review fixtures render without exceptions and expected content s
     assert.doesNotThrow(() => r.render(source, { baseURL: 'file://' + fixtures + '/' }), file);
     assert.ok(r.root.childElementCount > 0, file);
     if (file.startsWith('03-')) assert.match(r.root.textContent, /SHOULD APPEAR/);
+    assertInert(r, file);
   }
   r.close();
 });
@@ -403,5 +406,248 @@ test('front matter still works alongside alerts and footnotes', () => {
   const r = reader(); r.render('---\ntitle: T\n---\n\n> [!NOTE]\n> x[^a]\n\n[^a]: y');
   assert.ok(r.root.firstElementChild.matches('table.front-matter'));
   assert.ok(r.root.querySelector('.markdown-alert-note [data-footnote-ref]'));
+  r.close();
+});
+
+// Sanitized GitHub-style HTML subset (T-0021). Author HTML is re-emitted canonically by html-policy.js.
+const policyTags = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'blockquote', 'pre', 'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'table', 'caption', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'details', 'summary', 'figure', 'figcaption', 'picture', 'source', 'hr', 'br', 'wbr', 'img', 'a', 'b', 'i', 'strong', 'em', 'del', 'ins', 's', 'strike', 'sub', 'sup', 'kbd', 'code', 'tt', 'samp', 'var', 'q', 'cite', 'dfn', 'abbr', 'mark', 'small', 'span', 'time', 'ruby', 'rt', 'rp', 'bdo']);
+const safeHref = /^(#|https?:|mailto:|[^:/?#\\]*(?:[/?#]|$))/i, safeImage = /^(mdview-image:\/\/local\/|https?:\/\/|data:image\/(png|gif|jpeg|webp);)/i;
+function assertInert(r, label = '') {
+  const { root, window } = r;
+  for (const node of root.querySelectorAll('*')) {
+    const tag = node.localName, katex = node.closest('.katex'), octicon = node.closest('.markdown-alert-title svg.octicon');
+    assert.ok(policyTags.has(tag) || ['section', 'button', 'input'].includes(tag) || katex || octicon, `${label}: unexpected <${tag}>`);
+    if (tag === 'button') assert.ok(node.matches('.code-block > button.copy-code'), label);
+    if (tag === 'input') assert.ok(node.matches('input.task-checkbox[type="checkbox"][disabled]'), `${label}: forged input`);
+    for (const { name, value } of node.attributes) {
+      assert.ok(!/^on/i.test(name) && !['srcdoc', 'formaction', 'action', 'xlink:href', 'background', 'poster'].includes(name), `${label}: <${tag} ${name}>`);
+      if (name === 'style') assert.ok(katex || (/^t[hd]$/.test(tag) && /^text-align:(left|center|right)$/.test(value)), `${label}: style on <${tag}>`);
+      if (name === 'id' || name === 'name') assert.ok(!['mdview', 'document', 'getElementById', 'body', 'cookie'].includes(value), `${label}: clobbering ${name}=${value}`);
+    }
+    if (node.hasAttribute('href')) assert.ok(tag === 'a' && safeHref.test(node.getAttribute('href')) && !/^[/\\]{2}/.test(node.getAttribute('href')), `${label}: href ${node.getAttribute('href')}`);
+    if (node.hasAttribute('src')) assert.ok(tag === 'img' && safeImage.test(node.getAttribute('src')), `${label}: src ${node.getAttribute('src')}`);
+    if (node.hasAttribute('srcset')) for (const candidate of node.getAttribute('srcset').split(/,\s+/)) assert.ok(tag === 'source' && safeImage.test(candidate), `${label}: srcset ${candidate}`);
+  }
+  assert.equal(window.__pwned, undefined, label);
+  const reparsed = window.document.createElement('main'); reparsed.innerHTML = root.innerHTML;
+  assert.equal(reparsed.innerHTML, root.innerHTML, `${label}: serialization is not stable`);
+}
+test('allowed GitHub HTML renders as exact canonical markup', () => {
+  const r = reader(), markup = text => r.window.mdview.markup(text);
+  const same = ['<details open><summary>Open</summary>Shown</details>\n',
+    '<p align="center">\n  <a href="https://example.org/ci"><img src="badge.svg" alt="CI" width="64" height="20"></a>\n</p>\n',
+    '<img src="shot.png" alt="Shot" width="50%" height="120" align="right" loading="lazy">\n',
+    '<picture>\n  <source media="(prefers-color-scheme: dark)" srcset="dark.png 1x, dark@2x.png 2x">\n  <img src="light.png" alt="Logo">\n</picture>\n',
+    '<table border="1">\n<thead><tr><th scope="col" align="left">A</th></tr></thead>\n<tbody><tr><td colspan="2" valign="top" width="40">B</td></tr></tbody>\n</table>\n',
+    '<dl>\n<dt>Term</dt>\n<dd>Definition</dd>\n</dl>\n', '<pre>\nline &lt;1&gt;\n  indented\n</pre>\n',
+    '<ol start="3" type="a"><li value="5">x</li></ol>\n', '<figure><img src="f.png" alt="F"><figcaption>Cap <mark>tion</mark></figcaption></figure>\n',
+    '<div dir="rtl" lang="ar-EG"><time datetime="2026-11-03">Today</time> <abbr title="HyperText">HTML</abbr> <del>old</del><ins>new</ins></div>\n'];
+  for (const html of same) assert.equal(markup(html), html);
+  assert.equal(markup('<details>\n<summary>More <b>info</b></summary>\n\n**Markdown**\n\n</details>\n'), '<details>\n<summary>More <b>info</b></summary>\n<p><strong>Markdown</strong></p>\n</details>\n');
+  assert.equal(markup('Press <kbd>Ctrl</kbd>+<kbd>C</kbd>, H<sub>2</sub>O, x<sup>2</sup><br>next\n'), '<p>Press <kbd>Ctrl</kbd>+<kbd>C</kbd>, H<sub>2</sub>O, x<sup>2</sup><br>next</p>\n');
+  assert.equal(markup('<ruby>漢<rp>(</rp><rt>kan</rt><rp>)</rp></ruby>\n'), '<p><ruby>漢<rp>(</rp><rt>kan</rt><rp>)</rp></ruby></p>\n');
+  assert.equal(markup('<p>&copy; &amp; &#169; &#xA9; &bogus; a < b</p>\n'), '<p>© &amp; © © &amp;bogus; a &lt; b</p>\n');
+  assert.equal(markup('<br/> <a name="top"/> <hr/>\n'), '<p><br> <a name="user-content-top"></a> &lt;hr/&gt;</p>\n');
+  r.close();
+});
+test('allowed HTML becomes real elements with Markdown, math and images inside', () => {
+  const r = reader();
+  r.render('<details>\n<summary>More</summary>\n\n**Markdown** $x^2$\n\n</details>\n\n<p align="center"><img src="a b.png" alt="A" width="64"></p>\n\n<kbd>K</kbd>', { baseURL: 'file:///tmp/docs/' });
+  const details = r.root.querySelector('details');
+  assert.equal(details.parentElement, r.root); assert.equal(details.open, false);
+  assert.ok(details.querySelector('p strong')); assert.ok(details.querySelector('[data-math] .katex'));
+  const img = r.root.querySelector('p[align="center"] img');
+  assert.equal(img.src, 'mdview-image://local/tmp/docs/a%20b.png'); assert.equal(img.width, 64);
+  assert.equal(img.referrerPolicy, 'no-referrer'); assert.ok(r.root.querySelector('p > kbd')); r.close();
+});
+test('disallowed tags stay visible as text and comments are hidden', () => {
+  const r = reader(), markup = text => r.window.mdview.markup(text);
+  assert.equal(markup('<script>window.__pwned=1</script>\n'), '&lt;script&gt;window.__pwned=1&lt;/script&gt;\n');
+  assert.equal(markup('<style>body{display:none}</style>\n'), '&lt;style&gt;body{display:none}&lt;/style&gt;\n');
+  assert.equal(markup('<iframe src="https://evil.example"></iframe>\n'), '&lt;iframe src=&quot;https://evil.example&quot;&gt;&lt;/iframe&gt;\n');
+  assert.equal(markup('<center>Centered <font color="red">red</font> <u>u</u></center>\n'), '&lt;center&gt;Centered &lt;font color=&quot;red&quot;&gt;red&lt;/font&gt; &lt;u&gt;u&lt;/u&gt;&lt;/center&gt;\n');
+  assert.equal(markup('<svg onload="x"><a href="https://e.example">y</a></svg>\n'), '<p>&lt;svg onload=&quot;x&quot;&gt;&lt;a href=&quot;https://e.example&quot;&gt;y&lt;/a&gt;&lt;/svg&gt;</p>\n');
+  assert.equal(markup('<svg>\n<a href="https://e.example">y</a>\n</svg>\n'), '&lt;svg&gt;\n&lt;a href=&quot;https://e.example&quot;&gt;y&lt;/a&gt;\n&lt;/svg&gt;\n');
+  assert.equal(markup('a <input type="checkbox" checked> b <!-- hidden --> c\n'), '<p>a &lt;input type=&quot;checkbox&quot; checked&gt; b  c</p>\n');
+  assert.equal(markup('<!-- secret -->\n\nafter\n'), '<p>after</p>\n');
+  assert.equal(markup('a <style>b</style> c\n'), '<p>a &lt;style&gt;b&lt;/style&gt; c</p>\n');
+  r.render('<script>window.__pwned=1</script>\n\n<u>under</u> <!-- secret --> <form><button>b</button></form>');
+  assert.ok(r.root.textContent.includes('<script>window.__pwned=1</script>')); assert.ok(r.root.textContent.includes('<u>under</u>'));
+  assert.ok(!r.root.textContent.includes('secret')); assert.equal(r.root.querySelectorAll('script,u,form,button').length, 0);
+  assertInert(r, 'disallowed'); r.close();
+});
+test('unsafe and unknown attributes are dropped; duplicates keep the first value', () => {
+  const r = reader(), markup = text => r.window.mdview.markup(text);
+  assert.equal(markup('<p align="center" style="color:red" class="x" onclick="alert(1)" data-x="1" tabindex="1" id="intro" title=\'T "q" >\'>x</p>\n'), '<p align="center" id="user-content-intro" title="T &quot;q&quot; &gt;">x</p>\n');
+  assert.equal(markup('<a href="https://ok.example" target="_blank" rel="opener" href="javascript:alert(1)">ok</a>\n'), '<p><a href="https://ok.example">ok</a></p>\n');
+  assert.equal(markup('<a href="javascript:alert(1)" href="https://ok.example">bad</a>\n'), '<p>bad</p>\n');
+  assert.equal(markup('<img src="a.png" srcdoc="x" onerror="alert(1)" style="x" alt=\'say "hi"\'>\n'), '<img src="a.png" alt="say &quot;hi&quot;">\n');
+  assert.equal(markup('<div ALIGN="CENTER" DIR="RTL" lang="sv-SE" aria-hidden="true" aria-label="L" role="note" accesskey="k" xmlns="x">x</div>\n'), '<div align="center" dir="rtl" lang="sv-SE" aria-hidden="true" aria-label="L">x</div>\n');
+  assert.equal(markup('<td width="9999999" colspan="12345" align="middle" valign="center">x</td>\n'), '<td>x</td>\n');
+  assert.equal(markup('<img src="a.png" width="10px" height="1e3" align="justify" loading="auto">\n'), '<img src="a.png">\n');
+  assert.equal(markup('<ol start="x" type="z"><li value="1.5">x</li></ol>\n'), '<ol><li>x</li></ol>\n');
+  assert.equal(markup('<source srcset="a.png" type="text/html" media="screen;x{}">\n'), '<source srcset="a.png">\n');
+  r.close();
+});
+const hostileURLs = ['JaVaScRiPt:alert(1)', 'jav&#x09;ascript:alert(1)', '&#106;avascript&colon;alert(1)', '&#x6A;avascript:alert(1)', 'javascript&#58;alert(1)', 'jav&NewLine;ascript:alert(1)',
+  '\u0001javascript:alert(1)', ' \u0000 javascript:alert(1)', 'java\nscript:alert(1)', 'vbscript:msgbox(1)', 'data:text/html,<b>x</b>', 'data:image/svg+xml;base64,PHN2Zz4=',
+  'file:///etc/passwd', 'mdview-image://local/etc/passwd', '//evil.example/a.md', '\\\\evil.example\\a', '/\\evil.example', 'blob:https://x.example/1', 'about:blank', 'ssh://host', '1x:y'];
+test('hostile link and image URLs never become active links or image fetches', () => {
+  const r = reader();
+  for (const url of hostileURLs) {
+    const attr = url.replace(/"/g, '&quot;');
+    r.render(`x <a href="${attr}">link text</a> y\n\n<img src="${attr}" alt="Alt text">\n\n<picture><source srcset="${attr} 2x"><img src="ok.png" alt="P"></picture>`, { baseURL: 'file:///tmp/docs/' });
+    assert.equal(r.root.querySelectorAll('a').length, 0, JSON.stringify(url));
+    assert.ok(r.root.textContent.includes('link text'), JSON.stringify(url));
+    assert.equal(r.root.querySelectorAll('[srcset]').length, 0, JSON.stringify(url));
+    const images = r.root.querySelectorAll('img');
+    assert.equal(images.length, 1, JSON.stringify(url)); assert.equal(images[0].alt, 'P');
+    assert.match(r.root.querySelector('.image-error').textContent, /Image unavailable: Alt text/, JSON.stringify(url));
+    assertInert(r, url);
+  }
+  for (const srcset of ['ok.png 1x, data:image/svg+xml;base64,AA 2x', 'ok.png 1q', 'ok.png 1x 2x', ', ,', '']) {
+    assert.equal(r.window.mdview.markup(`<picture><source srcset="${srcset}"><img src="ok.png"></picture>\n`), '<p><picture><source><img src="ok.png"></picture></p>\n', srcset);
+  }
+  r.render('<picture><source srcset="dark.png 1x, data:image/png;base64,iVBORw0KGgo= 2x" media="(prefers-color-scheme: dark)"><img src="https://example.org/l.png" alt="L"></picture>', { baseURL: 'file:///tmp/docs/' });
+  assert.equal(r.root.querySelector('source').getAttribute('srcset'), 'mdview-image://local/tmp/docs/dark.png 1x, data:image/png;base64,iVBORw0KGgo= 2x');
+  assert.equal(r.root.querySelector('img').src, 'https://example.org/l.png'); r.close();
+});
+test('links and images in HTML route exactly like their Markdown equivalents', () => {
+  const r = reader();
+  const pairs = [['https://example.org/a?b=1', 'https://example.org/a?b=1'], ['other file.md#target', '<other file.md#target>'], ['#hello-world', '#hello-world'], ['mailto:a@example.org', 'mailto:a@example.org'], ['../up%20one.markdown', '../up%20one.markdown'], ['caf&eacute;.md', 'café.md']];
+  r.render(pairs.map(([html, markdown]) => `<a href="${html}">h</a> [m](${markdown})`).join('\n\n'), { baseURL: 'file:///tmp/docs/' });
+  for (const link of r.root.querySelectorAll('a')) link.click();
+  const hrefs = r.messages.filter(m => m.type === 'link').map(m => m.href);
+  assert.equal(hrefs.length, pairs.length * 2);
+  for (let i = 0; i < hrefs.length; i += 2) assert.equal(hrefs[i], hrefs[i + 1], `${hrefs[i]} vs ${hrefs[i + 1]}`);
+  r.render('<img src="images/a b.png" alt="h"> ![m](images/a%20b.png) <img src="https://example.org/i.png"> ![m](https://example.org/i.png)', { baseURL: 'file:///tmp/docs/' });
+  const sources = Array.from(r.root.querySelectorAll('img'), img => img.src);
+  assert.deepEqual(sources, ['mdview-image://local/tmp/docs/images/a%20b.png', 'mdview-image://local/tmp/docs/images/a%20b.png', 'https://example.org/i.png', 'https://example.org/i.png']);
+  r.root.querySelector('img').dispatchEvent(new r.window.Event('error'));
+  assert.equal(r.root.querySelector('.image-error').textContent, 'Image unavailable: h'); r.close();
+});
+test('unclosed or stray HTML cannot leak into or close trusted structure', () => {
+  const r = reader();
+  r.render('<b>bold\n\nnext para');
+  assert.equal(r.root.querySelectorAll('p')[1].textContent, 'next para'); assert.equal(r.root.querySelectorAll('p')[1].closest('b'), null);
+  r.render('<div><b>bold <i>italic\n\nnext para\n\n</div>');
+  assert.equal(r.root.querySelector('p').textContent, 'next para'); assert.equal(r.root.querySelector('p').closest('b,i'), null);
+  assert.equal(r.root.querySelector('p').parentElement.tagName, 'DIV');
+  r.render('a <a href="https://x.example">link <em>em\n\nnext');
+  assert.equal(r.root.querySelectorAll('p')[1].closest('a,em'), null); assert.equal(r.root.querySelectorAll('p')[1].querySelector('a,em'), null);
+  r.render('- one </li> two\n- three </ul> four\n\n> quote </blockquote> still\n\n**strong </strong> still**\n\n> [!NOTE]\n> alert </div> body\n\nafter');
+  assert.deepEqual(Array.from(r.root.querySelectorAll('li'), li => li.textContent), ['one  two', 'three  four']);
+  assert.match(r.root.querySelector('blockquote').textContent, /still/); assert.equal(r.root.querySelector('strong').textContent, 'strong  still');
+  assert.match(r.root.querySelector('.markdown-alert').textContent, /body/); assert.equal(r.root.lastElementChild.textContent, 'after');
+  assert.equal(r.root.lastElementChild.parentElement, r.root);
+  r.render('> [!NOTE]\n> <div align="center">\n>\n> inside\n\nafter\n\n</div>\n\nend');
+  const alert = r.root.querySelector('.markdown-alert');
+  assert.match(alert.textContent, /inside/); assert.ok(!alert.textContent.includes('after'));
+  assert.equal(Array.from(r.root.querySelectorAll('p')).find(p => p.textContent === 'after').parentElement, r.root);
+  r.render('<details><summary>S</summary>\n\nbody text\n\n# Next\n\nX[^1]\n\n[^1]: note');
+  const details = r.root.querySelector('details');
+  assert.match(details.textContent, /body text/); assert.ok(details.querySelector('h1'));
+  assert.equal(r.root.querySelector('section.footnotes').parentElement, r.root);
+  r.render('<b>a <i>b</b> c</i> d');
+  assert.equal(r.root.innerHTML, '<p><b>a <i>b</i></b> c d</p>\n');
+  r.close();
+});
+const mxssCorpus = ['<math><mtext><table><mglyph><style><img src=x onerror=window.__pwned=1>', '<noscript><p title="</noscript><img src=x onerror=window.__pwned=1>">',
+  '<form><math><mtext></form><form><mglyph><style></math><img src onerror=window.__pwned=1>', '<details open ontoggle="window.__pwned=1">x</details>',
+  '<meta http-equiv="refresh" content="0;url=javascript:window.__pwned=1">', '<base href="javascript:/">', '<object data="javascript:window.__pwned=1"></object>',
+  '<link rel="stylesheet" href="https://evil.example/x.css">', '<svg><animate onbegin="window.__pwned=1" attributeName="x" dur="1s">',
+  '<svg><a xlink:href="javascript:window.__pwned=1"><text x="20" y="20">X</text></a></svg>', '<img src=x onerror="window.__pwned=1">',
+  '<iframe srcdoc="<script>window.__pwned=1</script>"></iframe>', '<a href="javascript:window.__pwned=1">x</a>', '<img src="x" alt="`<img src=x onerror=window.__pwned=1>`">',
+  '<a title="&lt;img src=x onerror=window.__pwned=1&gt;" href="#x">t</a>', '<svg></p><style><a id="</style><img src=1 onerror=window.__pwned=1>">',
+  '<math><mi><mglyph><svg><mtext><textarea><path id="</textarea><img onerror=window.__pwned=1 src=1>">', '<table><tr><td><style></td><img src=x onerror=window.__pwned=1></style>',
+  '<xmp><img src=x onerror=window.__pwned=1></xmp>', '<template><img src=x onerror=window.__pwned=1></template>',
+  '<select><template><style><!--</style><a rel="--></select><img src=x onerror=window.__pwned=1>">', '<div id="mdview"></div><img name="getElementById"><form name="body"></form>',
+  '<a href="#" style="position:fixed;top:0;left:0;width:100%;height:100%">overlay</a>', '<!--><img src=x onerror=window.__pwned=1>-->', '<!-- --!><img src=x onerror=window.__pwned=1>-->',
+  '<?xml-stylesheet href="x"?><img src=x onerror=window.__pwned=1>', '<![CDATA[<img src=x onerror=window.__pwned=1>]]>', '<p><a href="https://ok.example">ok<img src="x" onerror="window.__pwned=1"></a></p>',
+  '<div\nonclick="window.__pwned=1">x</div>', '<img/src="x"/onerror="window.__pwned=1">', '<a href="jav&#x0A;ascript:window.__pwned=1">x</a>', '<embed src="javascript:window.__pwned=1">',
+  '<input autofocus onfocus="window.__pwned=1">', '<video><source onerror="window.__pwned=1"></video>', '<button formaction="javascript:window.__pwned=1">x</button>',
+  '<a href="https://ok.example"><table><tr><td><a href="javascript:window.__pwned=1">x</a></td></tr></table></a>', '<plaintext><img src=x onerror=window.__pwned=1>',
+  '<p id="</p><img src=x onerror=window.__pwned=1>">x</p>', '<img src="x\' onerror=\'window.__pwned=1">', '<details><summary onclick="window.__pwned=1">s</summary><style>*{}</style></details>',
+  '<span class="katex copy-code markdown-alert" data-math="x" data-footnote-ref>forged</span>', '<input class="task-checkbox" type="checkbox" disabled>'];
+test('mXSS and injection corpus renders inert in every block and inline context', () => {
+  const r = reader();
+  for (const sample of mxssCorpus) {
+    for (const text of [sample, `x ${sample} y`, `- ${sample}`, `> ${sample}`, `<div>\n\n${sample}\n\n</div>`, `| a |\n| - |\n| ${sample.replace(/\|/g, '\\|')} |`]) {
+      r.render(text, { baseURL: 'file:///tmp/docs/' });
+      assertInert(r, JSON.stringify(text));
+      assert.equal(r.root.querySelectorAll('[class*="katex"],.copy-code,.markdown-alert,[data-math],[data-footnote-ref],input').length, 0, JSON.stringify(text));
+    }
+  }
+  r.close();
+});
+test('math, code, checkboxes, front matter, alerts and footnotes survive alongside HTML', () => {
+  const r = reader();
+  r.render('---\ntitle: T\n---\n\n<sup>$x^2$</sup> <kbd>K</kbd>\n\n<details>\n<summary>Code</summary>\n\n```python\nprint(1)\n```\n\n$$y$$\n\n</details>\n\n- [ ] open <b>bold</b>\n- [x] done\n\n> [!TIP]\n> <kbd>Tip</kbd> body[^a]\n\n[^a]: Note <sub>sub</sub>');
+  assert.ok(r.root.firstElementChild.matches('table.front-matter'));
+  assert.ok(r.root.querySelector('sup [data-math] .katex'));
+  assert.ok(r.root.querySelector('details .hljs-built_in, details .code-block .copy-code'));
+  assert.ok(r.root.querySelector('details .math-display'));
+  const boxes = r.root.querySelectorAll('input.task-checkbox');
+  assert.equal(boxes.length, 2); assert.equal(boxes[1].checked, true); assert.ok(r.root.querySelector('li.task-list-item b'));
+  assert.ok(r.root.querySelector('.markdown-alert-tip kbd')); assert.ok(r.root.querySelector('section.footnotes sub'));
+  assertInert(r, 'survival'); r.close();
+});
+test('closed details: copy omits hidden content, find opens it, anchors navigate into it', () => {
+  const r = reader();
+  r.render('<details><summary>Sum</summary>\n\nHidden secret text\n\n<a name="deep"></a>Deep\n\n</details>\n\n<h3 id="custom">Custom</h3>\n\n<picture><source srcset="dark.png" media="(prefers-color-scheme: dark)"><img src="light.png" alt="Logo"></picture> <kbd>K</kbd> <mark>M</mark>\n\nVisible', { baseURL: 'file:///tmp/docs/' });
+  const data = clipboard(r), plain = data['text/plain'], html = data['text/html'];
+  assert.ok(plain.includes('Sum') && plain.includes('Visible') && plain.includes('Logo'), plain);
+  assert.ok(!plain.includes('Hidden secret'), plain); assert.ok(!html.includes('Hidden secret'), html);
+  assert.ok(/^Sum\n/.test(plain), plain);
+  assert.ok(!html.includes('user-content-') && !html.includes('mdview-image') && !html.includes('<source'), html);
+  const doc = new JSDOM(html).window.document;
+  assert.match(doc.querySelector('kbd').style.fontFamily, /Courier New/); assert.ok(doc.querySelector('mark').style.backgroundColor);
+  const details = r.root.querySelector('details');
+  assert.equal(r.window.mdview.find('secret', 1, true).count, 1); assert.equal(details.open, true);
+  details.open = false;
+  assert.equal(r.window.mdview.scrollToHeading('#deep'), true); assert.equal(details.open, true);
+  assert.equal(r.window.mdview.scrollToHeading('custom'), true);
+  assert.equal(r.window.mdview.scrollToHeading('#user-content-custom'), true);
+  r.close();
+});
+test('author ids and names cannot clobber DOM or renderer globals', () => {
+  const r = reader();
+  r.render('<img name="getElementById" src="a.png"> <a name="mdview"></a> <a id="cookie"></a>\n\n<div id="mdview">x</div>\n\n<div id="document">y</div>\n\n<form name="body"></form>');
+  assert.equal(typeof r.window.document.getElementById, 'function'); assert.equal(typeof r.window.mdview.render, 'function');
+  assert.equal(r.window.document.body.tagName, 'BODY'); assert.equal(r.window.document.getElementById('document'), r.root);
+  assert.ok(r.root.querySelector('#user-content-mdview')); assert.ok(r.root.querySelector('a[name="user-content-mdview"]'));
+  assert.equal(r.root.querySelector('img').hasAttribute('name'), false);
+  assertInert(r, 'clobbering'); r.close();
+});
+test('GitHub/CommonMark HTML block rules: unknown components stay literal, generics stay text', () => {
+  const r = reader();
+  r.render('<Component>\n**bold**\n\nUse Vec<T> and Option<String>, `Vec<T>` too.');
+  assert.equal(r.root.querySelectorAll('strong').length, 0); assert.ok(r.root.textContent.includes('<Component>\n**bold**'));
+  assert.equal(r.root.querySelector('p').textContent, 'Use Vec<T> and Option<String>, Vec<T> too.');
+  r.close();
+});
+test('inline author block tags cannot break trusted footnote, list, table or heading structure', () => {
+  const r = reader();
+  r.render('Ref one[^a] and two[^b].\n\n[^a]: First note <li>Injected item\n[^b]: Second note\n\n- item one <li>forged\n\n| x <td>forged</td> | y |\n| - | - |\n| 1 | 2 |\n\n# Title <h2>inner');
+  assert.equal(r.root.querySelectorAll('section.footnotes ol > li').length, 2);
+  assert.ok(r.root.querySelector('#fn-a .footnote-backref'));
+  assert.match(r.root.querySelector('#fn-a').textContent, /<li>Injected item/);
+  assert.equal(r.root.querySelectorAll('ul > li').length, 1);
+  assert.equal(r.root.querySelectorAll('thead th').length, 2);
+  assert.equal(r.root.querySelectorAll('h2:not(#footnote-label)').length, 0);
+  assert.match(clipboard(r)['text/plain'], /\[2\] Second note/);
+  r.render('Press <kbd>Ctrl</kbd> and <sub>2</sub><br>next');
+  assert.ok(r.root.querySelector('p kbd') && r.root.querySelector('p sub') && r.root.querySelector('p br'));
+  r.close();
+});
+test('outline navigation prefers a heading over an author element with the same id', () => {
+  const r = reader();
+  r.render('<p id="intro">spoof</p>\n\nfiller\n\n# user-content-intro\n');
+  let target = null;
+  r.window.HTMLElement.prototype.scrollIntoView = function () { target = this; };
+  assert.equal(r.window.mdview.scrollToHeading('user-content-intro'), true);
+  assert.equal(target.tagName, 'H1');
+  r.render('<p id="intro">author</p>\n\nText');
+  r.window.mdview.scrollToHeading('intro'); assert.equal(target.tagName, 'P');
   r.close();
 });

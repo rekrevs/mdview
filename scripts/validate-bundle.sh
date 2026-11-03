@@ -14,6 +14,7 @@ for required in \
     "$resources/index.html" \
     "$resources/reader.css" \
     "$resources/renderer.js" \
+    "$resources/html-policy.js" \
     "$resources/vendor/markdown-it.min.js" \
     "$resources/vendor/katex.min.js" \
     "$resources/vendor/katex.min.css" \

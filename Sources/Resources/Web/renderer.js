@@ -1,9 +1,10 @@
-/* mdview's offline document pipeline. Document HTML is deliberately treated as text. */
+/* mdview's offline document pipeline. Author HTML passes only through html-policy.js;
+   trusted renderer markup (math, code, alerts, footnotes, checkboxes) uses its own token types. */
 (() => {
   'use strict';
   const root = document.getElementById('document');
   const post = message => window.webkit?.messageHandlers?.reader?.postMessage(message);
-  const md = window.markdownit({ html: false, linkify: true, typographer: false });
+  const md = window.markdownit({ html: true, linkify: true, typographer: false });
   const escape = md.utils.escapeHtml;
   let lastMarkdown = null, lastBaseURL = null, documentURL = null, headingList = [];
   let findQuery = '', findRanges = [], findIndex = -1;
@@ -269,13 +270,21 @@
         const match = first?.type === 'text' && /^\[([ xX])\](?:\s|$)/.exec(first.content);
         if (match) {
           first.content = first.content.slice(match[0].length);
-          const checkbox = new state.Token('html_inline', '', 0);
-          checkbox.content = `<input class="task-checkbox" type="checkbox" disabled${match[1] !== ' ' ? ' checked' : ''} aria-label="${match[1] !== ' ' ? 'Completed' : 'Not completed'}">`;
+          const checkbox = new state.Token('task_checkbox', 'input', 0);
+          checkbox.meta = { checked: match[1] !== ' ' };
           token.children.unshift(checkbox); state.tokens[i - 2].attrJoin('class', 'task-list-item');
         }
       }
     }
   });
+
+  md.renderer.rules.task_checkbox = (tokens, index) => {
+    const checked = tokens[index].meta.checked;
+    return `<input class="task-checkbox" type="checkbox" disabled${checked ? ' checked' : ''} aria-label="${checked ? 'Completed' : 'Not completed'}">`;
+  };
+
+  // Last core rule: canonicalizes author HTML; html_block/html_inline renderers always escape.
+  const htmlPolicy = window.installHTMLPolicy(md);
 
   function imageURL(source, baseURL) {
     try {
@@ -284,6 +293,27 @@
       if (['https:', 'http:', 'data:'].includes(url.protocol)) return url.href;
     } catch (_) { /* A broken image gets a visible alt-text fallback. */ }
     return '';
+  }
+
+  function imageFallback(img) {
+    const fallback = document.createElement('span'); fallback.className = 'image-error';
+    fallback.textContent = img.alt ? `Image unavailable: ${img.alt}` : 'Image unavailable';
+    return fallback;
+  }
+  // Every rendered image (Markdown or allowed HTML) is resolved here, inside the inert template.
+  function prepareImage(img, baseURL) {
+    const source = img.getAttribute('src');
+    const resolved = source ? imageURL(source, baseURL) : '';
+    if (!resolved) { img.replaceWith(imageFallback(img)); return; }
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => img.replaceWith(imageFallback(img)), { once: true });
+    img.src = resolved;
+  }
+
+  function openDetails(node) {
+    for (let element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement; element && element !== root; element = element.parentElement) {
+      if (element.tagName === 'DETAILS' && !element.open) element.open = true;
+    }
   }
 
   function clearFind() {
@@ -303,17 +333,22 @@
     const oldScroll = window.scrollY;
     clearFind();
     const env = {};
-    root.innerHTML = md.render(markdown, env);
+    // Parse into an inert template and resolve every image before anything can fetch.
+    const template = document.createElement('template');
+    template.innerHTML = md.render(markdown, env);
     headingList = env.headings;
-    root.querySelectorAll('img').forEach(img => {
-      img.referrerPolicy = 'no-referrer';
-      img.addEventListener('error', () => {
-        const fallback = document.createElement('span'); fallback.className = 'image-error';
-        fallback.textContent = img.alt ? `Image unavailable: ${img.alt}` : 'Image unavailable';
-        img.replaceWith(fallback);
-      }, { once: true });
-      img.src = imageURL(img.getAttribute('src'), baseURL);
+    template.content.querySelectorAll('img').forEach(img => prepareImage(img, baseURL));
+    template.content.querySelectorAll('source[srcset]').forEach(source => {
+      if (source.parentElement?.tagName !== 'PICTURE') { source.removeAttribute('srcset'); return; }
+      const candidates = htmlPolicy.parseSrcset(source.getAttribute('srcset')).map(({ url, descriptor }) => {
+        let resolved = imageURL(url, baseURL);
+        if (resolved.startsWith('mdview-image:')) resolved = resolved.replace(/,/g, '%2C'); // Keep srcset unambiguous.
+        return resolved && (descriptor ? `${resolved} ${descriptor}` : resolved);
+      });
+      if (candidates.length && candidates.every(Boolean)) source.setAttribute('srcset', candidates.join(', '));
+      else source.removeAttribute('srcset');
     });
+    root.replaceChildren(...template.content.childNodes);
     lastMarkdown = markdown; lastBaseURL = baseURL;
     window.scrollTo(0, oldScroll);
     if (findQuery) find(findQuery, 1, true);
@@ -329,16 +364,22 @@
     const candidates = [raw];
     try { candidates.push(decodeURIComponent(raw)); } catch (_) { /* Keep the raw candidate. */ }
     for (const candidate of [...candidates]) if (candidate.startsWith('user-content-')) candidates.push(candidate.slice(13));
+    // Author ids and <a name> anchors carry GitHub's user-content- prefix.
+    for (const candidate of [...candidates]) if (!candidate.startsWith('user-content-')) candidates.push('user-content-' + candidate);
     for (const candidate of candidates) {
-      const target = candidate && document.getElementById(candidate);
-      if (target && root.contains(target)) { target.scrollIntoView({ block: 'start' }); return true; }
+      if (!candidate) continue;
+      // A heading wins over an author element that happens to share its id.
+      const owners = Array.from(root.querySelectorAll('[id]')).filter(node => node.id === candidate);
+      let target = owners.find(node => /^H[1-6]$/.test(node.tagName)) || owners[0];
+      if (!target) target = Array.from(document.getElementsByName(candidate)).find(node => node.tagName === 'A' && root.contains(node));
+      if (target) { openDetails(target); target.scrollIntoView({ block: 'start' }); return true; }
     }
     return false;
   }
 
   function indexText() {
     let text = ''; const segments = [];
-    const blocks = new Set(['P', 'DIV', 'PRE', 'LI', 'BLOCKQUOTE', 'TR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
+    const blocks = new Set(['P', 'DIV', 'PRE', 'LI', 'BLOCKQUOTE', 'TR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DETAILS', 'SUMMARY', 'DL', 'DT', 'DD', 'FIGURE', 'FIGCAPTION', 'CAPTION']);
     function visit(node) {
       if (node.nodeType === Node.TEXT_NODE) {
         segments.push({ node, start: text.length, end: text.length + node.data.length }); text += node.data; return;
@@ -373,6 +414,7 @@
     if (!findRanges.length) return { count: 0, index: 0 };
     findIndex = reset || findIndex < 0 ? (direction < 0 ? findRanges.length - 1 : 0) : (findIndex + (direction < 0 ? -1 : 1) + findRanges.length) % findRanges.length;
     const active = findRanges[findIndex];
+    openDetails(active.startContainer);
     if (window.CSS?.highlights && window.Highlight) {
       CSS.highlights.set('search-results', new Highlight(...findRanges));
       CSS.highlights.set('search-active', new Highlight(active));
@@ -418,14 +460,19 @@
       const offset = children.findIndex(node => range.intersectsNode(node));
       if (offset >= 0) copy.start = (source.hasAttribute('start') ? Number(source.getAttribute('start')) : 1) + offset;
     });
-    holder.querySelectorAll('button,svg.octicon,.sr-only').forEach(node => node.remove());
+    holder.querySelectorAll('button,svg.octicon,.sr-only,source').forEach(node => node.remove());
+    // A closed <details> shows only its summary, so only the summary is copied.
+    holder.querySelectorAll('details:not([open])').forEach(details => {
+      const summary = Array.from(details.children).find(node => node.tagName === 'SUMMARY');
+      details.replaceChildren(...(summary ? [summary] : []));
+    });
     holder.querySelectorAll('.footnote-backref').forEach(node => {
       const before = node.previousSibling;
       if (before?.nodeType === Node.TEXT_NODE) before.data = before.data.replace(/[ \t]+$/, '');
       node.remove();
     });
     // Footnote items copy with their visible number, e.g. "[1] Note text".
-    const footnoteItems = Array.from(root.querySelectorAll('section.footnotes > ol > li'));
+    const footnoteItems = Array.from(root.querySelectorAll('section.footnotes li.footnote-item'));
     holder.querySelectorAll('section.footnotes li[id], li.footnote-item').forEach(copy => {
       const number = footnoteItems.findIndex(item => item.id === copy.id) + 1;
       if (number) copy.dataset.footnoteNumber = String(number);
@@ -438,7 +485,7 @@
   function plainText(node) {
     if (node.nodeType === Node.TEXT_NODE) {
       // Ignore HTML formatter line breaks between blocks, preserving every code byte.
-      if (/^\s*\n\s*$/.test(node.data) && (['DIV', 'MAIN', 'TABLE', 'THEAD', 'TBODY', 'TR', 'UL', 'OL', 'BLOCKQUOTE', 'SECTION'].includes(node.parentElement?.tagName) || node.parentElement?.classList.contains('footnote-item'))) return '';
+      if (/^\s*\n\s*$/.test(node.data) && (['DIV', 'MAIN', 'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'UL', 'OL', 'BLOCKQUOTE', 'SECTION', 'DETAILS', 'DL', 'FIGURE', 'PICTURE'].includes(node.parentElement?.tagName) || node.parentElement?.classList.contains('footnote-item'))) return '';
       return node.data;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return '';
@@ -449,7 +496,8 @@
     if (['TD', 'TH'].includes(node.tagName)) text += '\t';
     else if (node.tagName === 'TR') text = text.replace(/\t$/, '') + '\n';
     else if (['P', 'PRE', 'UL', 'OL', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(node.tagName)) text += '\n\n';
-    else if (node.tagName === 'LI') text += '\n';
+    else if (['LI', 'DT'].includes(node.tagName)) text += '\n';
+    else if (['DIV', 'DETAILS', 'SUMMARY', 'DL', 'DD', 'FIGURE', 'FIGCAPTION', 'CAPTION'].includes(node.tagName) && text && !text.endsWith('\n')) text += '\n\n';
     return text;
   }
   function richHTML(holder) {
@@ -463,7 +511,9 @@
       PRE: 'font-family:"Courier New",monospace;font-size:10pt;white-space:pre;background-color:#f5f5f5;color:#222222;padding:10px',
       CODE: 'font-family:"Courier New",monospace;font-size:10pt;white-space:pre-wrap',
       BLOCKQUOTE: 'border-left:3px solid #b7b7b7;padding-left:12px;margin-left:12px',
-      STRONG: 'font-weight:bold', EM: 'font-style:italic', S: 'text-decoration:line-through'
+      STRONG: 'font-weight:bold', EM: 'font-style:italic', S: 'text-decoration:line-through',
+      KBD: 'font-family:"Courier New",monospace;font-size:10pt;border:1px solid #b7b7b7;border-radius:3px;padding:0 3px;background-color:#f6f8fa',
+      MARK: 'background-color:#fff8c5;color:#24292f'
     };
     // Alerts and footnotes are recognised by class, so collect their styles before classes go.
     const alertColors = { note: '#0969da', tip: '#1a7f37', important: '#8250df', warning: '#9a6700', caution: '#d1242f' };
@@ -492,7 +542,7 @@
         } catch (_) { node.removeAttribute('href'); }
       }
       for (const attribute of Array.from(node.attributes)) {
-        if (['class', 'id', 'tabindex'].includes(attribute.name) || /^(data-|aria-)/.test(attribute.name)) node.removeAttribute(attribute.name);
+        if (['class', 'id', 'name', 'tabindex'].includes(attribute.name) || /^(data-|aria-)/.test(attribute.name)) node.removeAttribute(attribute.name);
       }
     }
     return rich.innerHTML;
@@ -518,7 +568,7 @@
       post({ type: 'link', href });
     }
   });
-  window.mdview = { render, find, scrollToHeading, setZoom(scale) {
+  window.mdview = { render, find, scrollToHeading, markup: text => md.render(String(text ?? ''), {}), setZoom(scale) {
     document.documentElement.style.fontSize = `${16 * Math.max(0.5, Math.min(3, Number(scale) || 1))}px`;
   } };
   post({ type: 'ready' });

@@ -11,6 +11,14 @@ struct LinkDestinationTests {
             #expect(LinkDestination.resolve(href, relativeTo: document) == .blocked)
         }
     }
+    // Links from allowed author HTML (T-0021) reach the same classifier; hostile ones must stay blocked.
+    @Test func testHostileHrefsFromAuthorHTML() {
+        for href in ["JavaScript:alert(1)", "JAVASCRIPT:alert(1)", " javascript:alert(1)", "java\tscript:alert(1)", "\u{01}javascript:alert(1)",
+                     "vbscript:msgbox(1)", "data:text/html,<b>x</b>", "data:image/png;base64,AA", "blob:https://x.example/1",
+                     "mdview-image://local/etc/passwd", "//evil.com/a.md", "about:blank", "file://evil.com/share/a.md"] {
+            #expect(LinkDestination.resolve(href, relativeTo: document) == .blocked, "\(href)")
+        }
+    }
     @Test func testRelativeDocumentsAndEncodedCharacters() {
         #expect(LinkDestination.resolve("../other/a%20b.markdown#s%C3%B6k", relativeTo: document) == .document(URL(fileURLWithPath: "/tmp/other/a b.markdown"), fragment: "sök"))
         #expect(LinkDestination.resolve("a%23b.MD", relativeTo: document) == .document(URL(fileURLWithPath: "/tmp/docs/a#b.MD"), fragment: nil))

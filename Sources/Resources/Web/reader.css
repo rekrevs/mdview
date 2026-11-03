@@ -29,7 +29,13 @@ th,td { border:1px solid var(--border); padding:.4em .8em; } th { font-weight:60
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .footnote-ref { font-size:.75em; line-height:0; vertical-align:super; } .footnote-ref a,.footnote-item,.footnotes [id] { scroll-margin-top:1.5rem; }
 .footnotes { margin-top:2rem; padding-top:1rem; border-top:1px solid var(--border); color:var(--muted); font-size:.75rem; } .footnotes ol { padding-left:1.5em; } .footnotes li > p { margin:.25em 0; } .footnote-backref { font-family:-apple-system,BlinkMacSystemFont,sans-serif; }
-img { max-width:100%; height:auto; } .image-error { display:inline-block; color:var(--muted); border:1px dashed var(--border); padding:.5em; font-size:.9em; }
+img { max-width:100%; } img:not([height]) { height:auto; } img[align="left"] { float:left; margin:0 1em .5em 0; } img[align="right"] { float:right; margin:0 0 .5em 1em; } .image-error { display:inline-block; color:var(--muted); border:1px dashed var(--border); padding:.5em; font-size:.9em; }
+/* Author HTML subset (html-policy.js). */
+kbd { display:inline-block; padding:.15em .4em; font:.8em/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--foreground); vertical-align:middle; background:var(--subtle); border:1px solid var(--border); border-bottom-color:var(--muted); border-radius:6px; box-shadow:inset 0 -1px 0 var(--border); }
+details { margin:0 0 1rem; } details > :last-child { margin-bottom:0; } summary { cursor:pointer; display:list-item; } details[open] > summary { margin-bottom:.5rem; }
+dl { margin:0 0 1rem; padding:0; } dt { margin-top:1rem; font-style:italic; font-weight:600; } dd { margin:0 0 1rem; padding:0 1rem; }
+mark { background:#fff8c5; color:#24292f; } figure { margin:0 0 1rem; } figcaption { color:var(--muted); font-size:.9em; }
+@media (prefers-color-scheme: dark) { mark { background:#bb800926; color:var(--foreground); } }
 hr { border:0; height:1px; background:var(--border); margin:1.5rem 0; }
 .math-inline { white-space:nowrap; } .math-display { overflow-x:auto; overflow-y:hidden; margin:1.2rem 0; padding:.2rem 0; } .katex-display { margin:.3em 0; } .math-error { color:#c74646; white-space:pre-wrap; font-family:ui-monospace,monospace; }
 .hljs-keyword,.hljs-selector-tag,.hljs-literal { color:#cf222e; } .hljs-string,.hljs-regexp,.hljs-addition { color:#0a3069; } .hljs-comment,.hljs-quote { color:var(--muted); } .hljs-number,.hljs-built_in,.hljs-title,.hljs-attr { color:var(--code); }

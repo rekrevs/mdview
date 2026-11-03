@@ -312,6 +312,88 @@ final class Checks: NSObject, NSApplicationDelegate {
         try await snapshot(reader,"alerts-dark")
         w.appearance=NSAppearance(named:.aqua)
         try await until("light again") { try await !self.bool(reader,"matchMedia('(prefers-color-scheme: dark)').matches") }
+        // Sanitized GitHub HTML subset (T-0021).
+        let htmlFiller=(1...30).map{"HTML filler paragraph \($0)."}.joined(separator:"\n\n")
+        reader.updateMarkdown("# HTML subset\n\n<details>\n<summary>Show more</summary>\n\nHidden **markdown** inside details.\n\n</details>\n\nPress <kbd>Ctrl</kbd>+<kbd>C</kbd> to copy. H<sub>2</sub>O and x<sup>2</sup>.\n\n<p align=\"center\">\n  <img src=\"image with space.png\" alt=\"Sized icon\" width=\"64\">\n</p>\n\n<a href=\"https://example.com/html\">HTML external</a> · <a href=\"other file.markdown#s%C3%B6k\">HTML local</a> · <a href=\"#user-content-html-target\">HTML anchor</a>\n\n<picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"image%20with%20space.png\"><img src=\"image%20with%20space.png\" alt=\"Picture\" width=\"32\"></picture>\n\n\(htmlFiller)\n\n<h2 id=\"html-target\">HTML target</h2>\n\nEnd.")
+        try await until("html subset") { try await self.bool(reader,"document.querySelector('main details')!==null && document.querySelector('main kbd')!==null") }
+        _ = try await js(reader,"window.scrollTo(0,0)"); await delay(0.2)
+        let closedState=try await js(reader,"(()=>{const d=document.querySelector('details'),p=d.querySelector('p');return d.open+'|'+document.body.innerText.includes('Hidden')+'|'+(p.checkVisibility?p.checkVisibility():'n/a')})()") as? String ?? ""
+        print("DETAILS CLOSED \(closedState)")
+        check(closedState=="false|false|false" || closedState=="false|false|n/a","details starts closed with its Markdown body not rendered")
+        try await clickElement("summary")
+        check(try await bool(reader,"(()=>{const d=document.querySelector('details'),p=d.querySelector('p');return d.open && document.body.innerText.includes('Hidden markdown inside details.') && (!p.checkVisibility || p.checkVisibility()) && p.querySelector('strong').getBoundingClientRect().height>0})()"),"mouse click on summary opens details and shows its Markdown")
+        let kbdStyle=try await js(reader,"(()=>{const s=getComputedStyle(document.querySelector('kbd'));return s.borderTopStyle+'|'+s.fontFamily+'|'+s.borderRadius})()") as? String ?? ""
+        print("KBD STYLE \(kbdStyle)")
+        check(kbdStyle.hasPrefix("solid|") && kbdStyle.contains("monospace"),"kbd renders as a bordered monospace key")
+        check(try await bool(reader,"['center','-webkit-center'].includes(getComputedStyle(document.querySelector('p[align=center]')).textAlign)"),"p align=center is centred")
+        try await until("sized local image") { try await self.bool(reader,"(()=>{const i=document.querySelector('p[align=center] img');return i&&i.complete&&i.naturalWidth===128})()") }
+        check(try await bool(reader,"(()=>{const i=document.querySelector('p[align=center] img').getBoundingClientRect(),m=document.querySelector('main').getBoundingClientRect();return i.width===64&&Math.abs((i.left+i.width/2)-(m.left+m.width/2))<2})()"),"HTML img width=64 loads a 128-pixel local image at 64 points, centred")
+        try await until("picture image") { try await self.bool(reader,"(()=>{const i=document.querySelector('picture img');return i&&i.complete&&i.naturalWidth===128&&i.getBoundingClientRect().width===32})()") }
+        check(true,"picture/source image resolves through the local handler")
+        try await snapshot(reader,"html-subset")
+        external=nil; local=nil; fragment=nil
+        try await clickElement("a[href=\"https://example.com/html\"]")
+        try await until("html external link") { external != nil }
+        check(external?.absoluteString=="https://example.com/html","mouse click on an HTML link routes to the system endpoint")
+        try await clickElement("a[href^=other]")
+        try await until("html local link") { local != nil }
+        check(local==other && fragment=="sök","HTML relative .markdown link decodes path and fragment like Markdown")
+        try await clickElement("a[href=\"#user-content-html-target\"]")
+        check(try await inView("#user-content-html-target"),"HTML anchor link scrolls to the prefixed author id")
+        // Adversarial corpus: nothing executes, navigates, or fetches from disallowed contexts.
+        var opened:[URL]=[]
+        reader.openExternal={opened.append($0);return true}
+        let corpus = #"""
+        <script>window.__pwned=1</script>
+
+        <img src=x onerror="window.__pwned=1"> <img src="javascript:window.__pwned=1" alt="js image">
+
+        <svg><animate onbegin="window.__pwned=1" attributeName="x" dur="1s"/></svg>
+
+        <math><mtext><table><mglyph><style><img src=x onerror=window.__pwned=1>
+
+        <noscript><p title="</noscript><img src=x onerror=window.__pwned=1>">
+
+        <details open ontoggle="window.__pwned=1"><summary onclick="window.__pwned=1">Hostile summary</summary>body</details>
+
+        <iframe src="https://canary.invalid/iframe" srcdoc="<script>parent.__pwned=1</script>"></iframe>
+
+        <object data="https://canary.invalid/object"></object> <embed src="https://canary.invalid/embed">
+
+        <link rel="stylesheet" href="https://canary.invalid/link.css">
+
+        <meta http-equiv="refresh" content="0;url=https://canary.invalid/refresh">
+
+        <base href="https://canary.invalid/">
+
+        <video poster="https://canary.invalid/poster.png"></video> <table background="https://canary.invalid/bg.png"><tr><td>t</td></tr></table>
+
+        <a href="javascript:window.__pwned=1">js link</a> <a href="jav&#x09;ascript:window.__pwned=1">tab link</a> <a href="data:text/html,x">data link</a> <a href="//canary.invalid/x.md">host link</a>
+
+        <form action="https://canary.invalid/form"><button formaction="javascript:window.__pwned=1">Go</button></form>
+
+        <a href="https://ok.example/safe" target="_blank" onclick="window.__pwned=1">safe link</a> <a href="#x">anchor</a>
+
+        <p style="position:fixed;inset:0;background:red" class="markdown-alert">overlay</p>
+        """#
+        reader.updateMarkdown(corpus)
+        try await until("adversarial corpus") { try await self.bool(reader,"document.body.innerText.includes('safe link')") }
+        await delay(0.5)
+        _ = try await js(reader,"document.querySelectorAll('main a, main summary').forEach(n=>n.click())")
+        await delay(0.5)
+        let canaries=try await js(reader,"performance.getEntriesByType('resource').map(e=>e.name).filter(n=>n.includes('canary'))") as? [String] ?? ["?"]
+        print("ADVERSARIAL opened=\(opened) canaries=\(canaries)")
+        check(try await bool(reader,"window.__pwned===undefined && window.parent.__pwned===undefined && !document.querySelector('main script,main iframe,main object,main embed,main link,main meta,main base,main form,main svg,main [onerror],main [onclick],main [style],main .markdown-alert')"),"adversarial HTML corpus is inert after clicking every link and summary")
+        check(opened.map(\.absoluteString)==["https://ok.example/safe"],"only the safe HTML link reached the system endpoint")
+        check(canaries.isEmpty,"no resource requests for disallowed iframe/object/embed/link/meta/base/poster/background URLs")
+        check(try await bool(reader,"location.href.endsWith('/index.html') && document.querySelector('main').innerText.includes('<script>')"),"page did not navigate; disallowed tags remain visible text")
+        check(reader.errorMessage==nil,"no blocked-link or load errors from adversarial HTML")
+        reader.openExternal={external=$0;return true}
+        // CSP proof: even markup inserted without the sanitizer cannot run inline handlers.
+        _ = try await js(reader,"(()=>{document.querySelector('main').insertAdjacentHTML('beforeend','<img id=\"csp-probe\" src=\"x\" onerror=\"window.__csp=1\">');document.getElementById('csp-probe').addEventListener('error',()=>{window.__cspError=1});})()")
+        try await until("csp probe error") { try await self.bool(reader,"window.__cspError===1") }
+        await delay(0.3)
+        check(try await bool(reader,"window.__csp===undefined"),"CSP blocks an inline onerror handler inserted directly into the page")
         reader.updateMarkdown("Bad formula: $\\notARealCommand{x}$\n\n<script>window.injected=true</script>\n\n[javascript](javascript:alert(1))")
         try await until("invalid formula fallback") { try await self.bool(reader,"document.querySelector('.math-error')!==null") }
         check(try await bool(reader,"!window.injected && !document.querySelector('main script') && !document.querySelector('a[href^=javascript]')"),"document scripts and unsafe link schemes cannot execute")

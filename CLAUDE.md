@@ -10,12 +10,12 @@ Version 2 uses a SwiftUI document app with one `WKWebView` per reader window. Th
 - `Sources/ContentView.swift`: document state, per-window zoom/find and reload integration.
 - `Sources/ReaderWebView.swift`: WebKit hosting, navigation and keyboard scrolling.
 - `Sources/LinkDestination.swift`: URL classification for anchors, local files and external destinations.
-- `Sources/Resources/Web/`: offline page, renderer, CSS, vendored libraries/fonts/licenses.
+- `Sources/Resources/Web/`: offline page, renderer, author-HTML policy (`html-policy.js`), CSS, vendored libraries/fonts/licenses.
 - `Tests/mdviewTests/`: Swift regression tests.
 - `Tests/Renderer/`: Node renderer regression tests.
 - `scripts/check-reader.py`: native GUI verification entry point.
 
-Rendering uses markdown-it, KaTeX and highlight.js, with raw HTML disabled. Libraries and fonts are pinned local assets; the installed reader must work without access to the source checkout or a CDN. `Package.swift` copies the complete `Resources` directory. Bundle lookup must prefer resources inside the installed app before SwiftPM's development fallback.
+Rendering uses markdown-it, KaTeX and highlight.js, with author HTML limited to the `html-policy.js` allowlist. Libraries and fonts are pinned local assets; the installed reader must work without access to the source checkout or a CDN. `Package.swift` copies the complete `Resources` directory. Bundle lookup must prefer resources inside the installed app before SwiftPM's development fallback.
 
 ## Build and verification
 
@@ -40,7 +40,7 @@ For rendering or interaction changes, reproduce the issue and test the actual We
 - Keep keyboard character shortcuts in SwiftUI commands to preserve keyboard layout behavior. Physical scrolling keys may use macOS key codes.
 - Scope zoom and find actions to the active document; avoid broadcasting state changes to every window.
 - Preserve nested Markdown content, whitespace and math environments. On unsupported input, show source or a clear error instead of dropping content.
-- Keep raw Markdown HTML inert; only bundled scripts execute. Explicitly classify link destinations before opening them.
+- Author HTML passes only through `html-policy.js`, which emits canonical allowlisted markup and never raw source; trusted renderer output uses its own token types; only bundled scripts execute (keep `script-src 'self'`); classify every link destination, including links in HTML.
 - File reload must survive inode replacement during atomic saves and close every watcher descriptor. Keep last good document content visible if a reload temporarily fails.
 - Keep SwiftPM and app-bundle resources in sync. Validate a relocated bundle with no build-tree resource fallback before declaring packaging complete.
 - Update README and dependency licenses/manifest when supported behavior or vendored libraries change.

@@ -112,7 +112,7 @@
     {
       "id": "T-0021",
       "size": "L",
-      "status": "READY",
+      "status": "DONE",
       "summary": "Render a sanitized GitHub-style HTML subset"
     },
     {
